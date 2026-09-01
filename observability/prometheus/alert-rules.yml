@@ -1,0 +1,29 @@
+groups:
+  - name: sentinel-forecast
+    rules:
+      - alert: MemoriaPrevisaoInfo
+        expr: memoria_previsao_percentual > 70
+        for: 5m
+        labels:
+          severity: info
+        annotations:
+          summary: "Previsao de memoria acima de 70%"
+          description: "Tendencia projetada: {{ $value | humanize }}%. Sem acao necessaria ainda, monitorar."
+
+      - alert: MemoriaPrevisaoWarning
+        expr: memoria_previsao_percentual > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Previsao de memoria acima de 85%"
+          description: "Tendencia projetada: {{ $value | humanize }}%. Avaliar necessidade de escalonar recursos."
+
+      - alert: MemoriaPrevisaoCritical
+        expr: memoria_previsao_percentual > 95
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Previsao de memoria acima de 95% - risco iminente"
+          description: "Tendencia projetada: {{ $value | humanize }}%. Acao imediata recomendada."

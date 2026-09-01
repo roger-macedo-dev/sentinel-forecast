@@ -1,0 +1,18 @@
+services:
+  node_exporter:
+    image: prom/node-exporter:v1.8.2
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./observability/prometheus/alert-rules.yml:/etc/prometheus/alert-rules.yml
+
+  sidecar:
+    build: ./sidecar
+    environment:
+      - PROMETHEUS_URL=http://prometheus:9090
+    ports:
+      - "8000:8000"
