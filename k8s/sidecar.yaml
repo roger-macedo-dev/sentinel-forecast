@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sidecar
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sidecar
+  template:
+    metadata:
+      labels:
+        app: sidecar
+    spec:
+      containers:
+        - name: sidecar
+          image: ghcr.io/roger-macedo-dev/sentinel-sidecar:v1
+          ports:
+            - containerPort: 8000
+          env:
+            - name: PROMETHEUS_URL
+              value: "http://prometheus:9090"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sidecar
+spec:
+  selector:
+    app: sidecar
+  ports:
+    - port: 8000
+      targetPort: 8000
