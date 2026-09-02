@@ -6,6 +6,7 @@ RUN pip install --user -r requirements.txt
 
 FROM python:3.11-slim
 WORKDIR /api
+RUN pip install --upgrade pip setuptools wheel
 RUN useradd -m api-user
 COPY --from=builder /root/.local /home/api-user/.local
 RUN chown -R api-user:api-user /home/api-user/.local
