@@ -44,3 +44,6 @@ jobs:
           sed -i "s|config-checksum: .*|config-checksum: \"$CHECKSUM_PROM\"|" k8s/prometheus.yaml
           CHECKSUM_GRAFANA=$(cat k8s/grafana-datasources-configmap.yaml k8s/grafana-dashboards-provider-configmap.yaml k8s/grafana-dashboards-configmap.yaml | sha256sum | cut -c1-16)
           sed -i "s|config-checksum: .*|config-checksum: \"$CHECKSUM_GRAFANA\"|" k8s/grafana.yaml
+
+      - name: Deploy no cluster
+        run: kubectl apply -f k8s/
