@@ -68,8 +68,11 @@ real de sinal preditivo.
 
 ## Status de implementacao (atualizado)
 
-Multi-tenant e a aplicacao real ja foram implementados: Postgres com 3 schemas
-(cliente_norte/sul/leste), API Flask minima gerando trafego real, `postgres_exporter`
-integrado ao Prometheus. Validado local via Docker Compose. Deploy desses componentes
-no Kubernetes e a separacao Multi-Site (Global vs Regiao Restrita) permanecem como
-proximos passos.
+Multi-tenant e aplicacao real implementados e rodando **em Kubernetes** (GKE):
+Postgres com 3 schemas (cliente_norte/sul/leste) e volume persistente, API Flask
+gerando trafego real, `postgres_exporter` integrado ao Prometheus, credenciais em
+Secret e script de schemas via ConfigMap. Dashboard e datasource do Grafana
+provisionados como codigo. CI/CD completo (build, scan Trivy, publicacao no GHCR e
+deploy no cluster) validado ponta a ponta.
+
+A separacao Multi-Site (Global vs Regiao Restrita) permanece como proximo passo.
