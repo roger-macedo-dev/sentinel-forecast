@@ -31,9 +31,10 @@ jobs:
           location: ${{ secrets.GKE_ZONE }}
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-      - name: Atualizar tag da imagem do sidecar
+      - name: Atualizar tags das imagens
         run: |
           sed -i "s|ghcr.io/roger-macedo-dev/sentinel-sidecar:.*|ghcr.io/roger-macedo-dev/sentinel-sidecar:${{ inputs.image_tag }}|" k8s/sidecar.yaml
+          sed -i "s|ghcr.io/roger-macedo-dev/sentinel-api:.*|ghcr.io/roger-macedo-dev/sentinel-api:${{ inputs.image_tag }}|" k8s/api.yaml
 
       - name: Deploy no cluster
         run: kubectl apply -f k8s/
