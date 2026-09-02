@@ -16,3 +16,33 @@ services:
       - PROMETHEUS_URL=http://prometheus:9090
     ports:
       - "8000:8000"
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_PASSWORD=sentinel123
+      - POSTGRES_USER=sentinel
+      - POSTGRES_DB=sentinel_forecast
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./postgres-init:/docker-entrypoint-initdb.d
+
+  postgres_exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
+    environment:
+      - DATA_SOURCE_NAME=postgresql://sentinel:sentinel123@postgres:5432/sentinel_forecast?sslmode=disable
+    ports:
+      - "9187:9187"
+
+  api:
+    build: ./api
+    environment:
+      - DB_HOST=postgres
+      - DB_NAME=sentinel_forecast
+      - DB_USER=sentinel
+      - DB_PASSWORD=sentinel123
+    ports:
+      - "5000:5000"
+    depends_on:
+      - postgres

@@ -1,0 +1,24 @@
+CREATE SCHEMA cliente_norte;
+CREATE SCHEMA cliente_sul;
+CREATE SCHEMA cliente_leste;
+
+CREATE TABLE cliente_norte.envios (
+    id SERIAL PRIMARY KEY,
+    destino TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pendente',
+    criado_em TIMESTAMP DEFAULT now()
+);
+
+CREATE TABLE cliente_sul.envios (
+    id SERIAL PRIMARY KEY,
+    destino TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pendente',
+    criado_em TIMESTAMP DEFAULT now()
+);
+
+CREATE TABLE cliente_leste.envios (
+    id SERIAL PRIMARY KEY,
+    destino TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pendente',
+    criado_em TIMESTAMP DEFAULT now()
+);
