@@ -65,3 +65,11 @@ real de sinal preditivo.
 4. Prometheus faz scrape normal — sem Pushgateway, sem mudança na stack existente
 5. Alertmanager dispara regras sobre a métrica computada, segmentadas por
    criticidade (info/warning/critical)
+
+## Status de implementacao (atualizado)
+
+Multi-tenant e a aplicacao real ja foram implementados: Postgres com 3 schemas
+(cliente_norte/sul/leste), API Flask minima gerando trafego real, `postgres_exporter`
+integrado ao Prometheus. Validado local via Docker Compose. Deploy desses componentes
+no Kubernetes e a separacao Multi-Site (Global vs Regiao Restrita) permanecem como
+proximos passos.

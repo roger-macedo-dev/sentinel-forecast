@@ -17,12 +17,19 @@ Cenário completo e opções de arquitetura avaliadas em [`docs/DESIGN.md`](docs
 
 ```
 node_exporter (DaemonSet)  ->  Prometheus  <->  sidecar (Prophet)
-                                    |                 ^
-                                Grafana         expoe /metrics
-                              (dashboards)    (previsao computada)
+postgres_exporter          ->      |                 ^
+                                Grafana          expõe /metrics
+api (multi-tenant) -> postgres (dashboards)   (previsão computada)
 ```
 
 - `node_exporter` coleta métricas reais do node (CPU, memória, disco, rede)
+- `postgres` banco real, **multi-tenant**: cada cliente é um schema isolado
+  (`cliente_norte`, `cliente_sul`, `cliente_leste`), mesmo padrão descrito no
+  cenário de origem do projeto
+- `api` aplicação Flask mínima, gera tráfego real de escrita/leitura no banco,
+  roteando dinamicamente pro schema do tenant correto
+- `postgres_exporter` traduz estatísticas internas do Postgres (conexões,
+  cache hit ratio) em métricas Prometheus
 - `sidecar` consulta o histórico via API do Prometheus, treina um modelo Prophet
   a cada minuto, expõe a previsão como métrica nova (`memoria_previsao_percentual`)
 - `Prometheus` faz scrape de volta dessa métrica computada — o ciclo se fecha
@@ -35,8 +42,10 @@ node_exporter (DaemonSet)  ->  Prometheus  <->  sidecar (Prophet)
 
 | Camada | Tecnologia |
 |---|---|
+| Aplicação | Python, Flask |
+| Banco de dados | PostgreSQL 16, multi-tenant (schema por cliente) |
 | Forecasting | Python, Flask, Prophet, pandas |
-| Observabilidade | Prometheus, Grafana, node_exporter |
+| Observabilidade | Prometheus, Grafana, node_exporter, postgres_exporter |
 | Orquestração | Kubernetes (testado em GKE) |
 | IaC / Deploy | Docker Compose (local), manifests Kubernetes (`k8s/`) |
 | Cloud | Google Cloud Platform |
@@ -51,8 +60,22 @@ Serviços disponíveis:
 
 | Serviço | URL |
 |---|---|
+| API | http://localhost:5000 |
 | Prometheus | http://localhost:9091 |
 | Sidecar (métricas) | http://localhost:8000/metrics |
+
+### Testando a API multi-tenant
+
+```bash
+curl -X POST http://localhost:5000/envios/norte \
+  -H "Content-Type: application/json" \
+  -d '{"destino": "Sao Paulo"}'
+
+curl http://localhost:5000/envios/norte
+```
+
+Tenants disponíveis: `norte`, `sul`, `leste` — cada um isolado em seu próprio
+schema no Postgres (`cliente_norte`, `cliente_sul`, `cliente_leste`).
 
 ## Deploy no Kubernetes (GKE)
 
@@ -65,6 +88,9 @@ para monitorar o node real, não o container), `prometheus` (Deployment +
 ConfigMap para config/regras de alerta), `sidecar` (Deployment, imagem publicada
 no GHCR), `grafana` (Deployment com `PersistentVolumeClaim` para não perder
 dashboards/datasources em caso de restart do Pod).
+
+> Nota: `api` e `postgres` (multi-tenant) ainda existem só no Docker Compose local
+> — deploy desses dois no Kubernetes é o próximo passo do backlog.
 
 Prometheus e Grafana são expostos via `Service type: LoadBalancer` (IP público
 gerenciado pela cloud).
@@ -105,4 +131,7 @@ delete`) ao final de cada sessão.
 ## Status
 
 Prova de conceito validada end-to-end: local (Docker Compose) e em nuvem real
-(GKE). Backlog: HPA/autoscaling, réplicas do sidecar por squad/namespace.
+(GKE, para node_exporter/prometheus/sidecar/grafana). Backlog: deploy de
+api/postgres no Kubernetes, multi-região (replicar a separação de ambientes
+descrita no design doc), HPA/autoscaling, réplicas do sidecar por
+squad/namespace.
