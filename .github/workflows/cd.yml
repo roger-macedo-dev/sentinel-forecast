@@ -1,0 +1,39 @@
+name: CD
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Tag da imagem a implantar (SHA do commit, ver no GHCR)'
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Autenticar no GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Instalar plugin de autenticação do GKE
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y google-cloud-cli-gke-gcloud-auth-plugin
+
+      - name: Obter credenciais do cluster
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ secrets.GKE_CLUSTER }}
+          location: ${{ secrets.GKE_ZONE }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Atualizar tag da imagem do sidecar
+        run: |
+          sed -i "s|ghcr.io/roger-macedo-dev/sentinel-sidecar:.*|ghcr.io/roger-macedo-dev/sentinel-sidecar:${{ inputs.image_tag }}|" k8s/sidecar.yaml
+
+      - name: Deploy no cluster
+        run: kubectl apply -f k8s/
