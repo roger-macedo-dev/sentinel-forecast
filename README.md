@@ -1,5 +1,8 @@
 # Sentinel Forecast
 
+[![CI](https://github.com/roger-macedo-dev/sentinel-forecast/actions/workflows/ci.yml/badge.svg)](https://github.com/roger-macedo-dev/sentinel-forecast/actions/workflows/ci.yml)
+[![CD](https://github.com/roger-macedo-dev/sentinel-forecast/actions/workflows/cd.yml/badge.svg)](https://github.com/roger-macedo-dev/sentinel-forecast/actions/workflows/cd.yml)
+
 Plataforma de observabilidade preditiva para ambientes Kubernetes — um sidecar de
 forecasting (Prophet) integrado à stack Prometheus/Grafana, antecipando degradação
 de performance antes que vire incidente, com alertas segmentados por criticidade.
@@ -83,28 +86,51 @@ schema no Postgres (`cliente_norte`, `cliente_sul`, `cliente_leste`).
 kubectl apply -f k8s/
 ```
 
-Cria: `node_exporter` (DaemonSet, com acesso ao host via `hostPath`/`hostNetwork`
-para monitorar o node real, não o container), `prometheus` (Deployment +
-ConfigMap para config/regras de alerta), `sidecar` (Deployment, imagem publicada
-no GHCR), `grafana` (Deployment com `PersistentVolumeClaim` para não perder
-dashboards/datasources em caso de restart do Pod).
+A stack inteira roda no cluster:
 
-> Nota: `api` e `postgres` (multi-tenant) ainda existem só no Docker Compose local
-> — deploy desses dois no Kubernetes é backlog (ver abaixo).
+| Recurso | Observação |
+|---|---|
+| `node_exporter` | DaemonSet com `hostPath`/`hostNetwork` — monitora o node real, não o container |
+| `prometheus` | Deployment + ConfigMap (config e regras de alerta) |
+| `sidecar` | Deployment, imagem publicada no GHCR pelo CI |
+| `grafana` | Deployment com PVC, datasource e dashboard provisionados via código |
+| `postgres` | Deployment + PVC, `PGDATA` em subdiretório (disco novo vem com `lost+found`, e o Postgres recusa diretório não-vazio) |
+| `postgres-exporter` | Deployment, credenciais lidas do Secret |
+| `api` | Deployment, credenciais do banco lidas do Secret |
+
+Credenciais do banco ficam em `Secret`; o script de criação dos schemas
+multi-tenant é entregue via `ConfigMap` montado em
+`/docker-entrypoint-initdb.d`.
 
 Prometheus e Grafana são expostos via `Service type: LoadBalancer` (IP público
-gerenciado pela cloud).
+gerenciado pela cloud). Banco e API ficam em `ClusterIP` — sem exposição externa.
+
+### Recarga de configuração sem restart desnecessário
+
+`kubectl apply` atualiza um ConfigMap, mas o processo em execução continua com a
+config antiga em memória. Em vez de reiniciar tudo a cada deploy (o que apagaria
+o histórico do Prometheus), o CD grava um **checksum da config numa annotation do
+Pod**: se a config mudou, o template do Pod muda e o Kubernetes faz rolling
+update sozinho; se não mudou, nada é reiniciado.
 
 ## Dashboard
 
-Organizado em duas seções (rows):
+Versionado como código em `observability/grafana/` e provisionado
+automaticamente (datasource + dashboard): um cluster novo já nasce com o
+dashboard pronto, sem configuração manual na interface.
 
-- **Resumo** — Stat panels com valores atuais (Previsão de Memória, CPU, Memória),
-  cor dinâmica por threshold (verde/amarelo/vermelho)
-- **Infraestrutura do Node** — painéis de tendência (CPU, Memória, Disco, Rede,
-  Load average), com thresholds aplicados onde fazem sentido fisicamente (CPU/
-  Memória/Disco em %, Load average em valor absoluto relativo ao número de
-  vCPUs — rede sem threshold, por não ter teto de capacidade definido)
+Organizado em três seções:
+
+- **Resumo** — Stat panels com os valores atuais (Previsão de memória, CPU,
+  Memória), cor dinâmica por threshold
+- **Infraestrutura do node** — painéis de tendência (CPU, Memória, Disco, Rede,
+  Load average)
+- **Banco de dados** — status do Postgres, conexões ativas e cache hit ratio
+
+Critério de formatação: threshold de status só onde existe um teto físico real
+(CPU/Memória/Disco em %, cache hit ratio). Rede fica sem threshold, por não ter
+capacidade máxima definida, e load average aparece em valor absoluto — deve ser
+lido em relação ao número de vCPUs, não como percentual.
 
 ## Alertas
 
@@ -160,23 +186,27 @@ delete`) ao final de cada sessão.
 
 ## Status
 
-Prova de conceito validada end-to-end: local (Docker Compose) e em nuvem real
-(GKE, para node_exporter/prometheus/sidecar/grafana), com CI/CD funcionando
-(build, scan de segurança e publicação automática das imagens).
+Validado end-to-end em nuvem real (GKE): stack completa no cluster — aplicação
+multi-tenant, banco com volume persistente, coleta de métricas, previsão via
+Prophet, alertas e dashboard provisionado — com CI/CD executado de ponta a ponta
+(build, scan de segurança, publicação das imagens e deploy no cluster).
 
-## Backlog
+Também roda inteira localmente via Docker Compose.
 
-Próximos passos planejados, não implementados ainda:
+## Roadmap
 
 - **Multi-região** — dois clusters GKE em regiões diferentes, replicando a
   separação Global / Região Restrita já descrita em `docs/DESIGN.md`
-- **Deploy de `api`/`postgres` no Kubernetes** — hoje só rodam via Docker Compose local
 - **Mais previsão de falha** — Prophet em outras métricas (CPU, disco, conexões
   do Postgres, latência da API), detecção de anomalia real vs. limiar fixo,
   alertas preditivos no lado da aplicação (taxa de erro crescendo)
 - **Auto-remediação de alertas** — reação automática a alertas críticos (restart
   de Pod, limpeza de disco, scaling), via Alertmanager webhooks ou operators
 - **HPA / autoscaling** — escalonamento automático de réplicas
+- **Persistência do Prometheus** — hoje o histórico de métricas é efêmero;
+  adicionar PVC para sobreviver a restart do Pod
 - **Streaming (Kafka)** — desacoplar API→banco via eventos (mesmo padrão do
   `pedidos-app`); e/ou métricas em tempo real via Kafka Streams/ksqlDB no lugar
   do scrape pull-based do Prometheus
+- **Infraestrutura como código** — provisionar o cluster via Terraform, em vez
+  de `gcloud` imperativo

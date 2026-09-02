@@ -383,6 +383,7 @@
         "defaults": {
           "unit": "none",
           "min": 0,
+          "decimals": 0,
           "color": { "mode": "palette-classic" },
           "custom": {
             "lineWidth": 2,
