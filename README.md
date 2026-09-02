@@ -117,6 +117,36 @@ Organizado em duas seções (rows):
 | `MemoriaPrevisaoWarning` | previsão > 85% | warning |
 | `MemoriaPrevisaoCritical` | previsão > 95% | critical |
 
+## CI/CD
+
+Dois pipelines separados (`.github/workflows/`), refletindo o fato de o cluster
+GKE ser efêmero por design:
+
+**CI (`ci.yml`) — automático**, em todo push e PR contra `main`:
+
+1. Build das imagens `sidecar` e `api` (job em `matrix`, um por serviço)
+2. Scan de vulnerabilidade com **Trivy** (`CRITICAL`/`HIGH`), com
+   `ignore-unfixed: true` — falha o pipeline apenas quando existe correção
+   disponível e não aplicada, em vez de travar indefinidamente por CVE de
+   pacote do SO ainda sem patch upstream
+3. Push pro GHCR com tag = SHA do commit (rastreável, nunca sobrescreve)
+
+Em PR o pipeline builda e escaneia mas **não publica** — só push em `main` publica.
+
+**CD (`cd.yml`) — manual** (`workflow_dispatch`, com a tag da imagem como input):
+autentica no GCP por service account dedicada (`roles/container.developer`,
+menor privilégio), obtém credenciais do cluster, injeta a tag escolhida no
+manifest e roda `kubectl apply -f k8s/`. Manual porque o cluster só existe
+durante as sessões de teste.
+
+### Hardening aplicado no processo
+
+O scan encontrou CVEs reais no toolchain de build (`pip`, `setuptools`,
+`ensurepip`, e libs vendorizadas dentro do próprio `pip`). Correção adotada:
+**remover pip/setuptools/ensurepip da imagem final** — são ferramentas de
+build, não de runtime; as dependências já chegam prontas do estágio `builder`.
+Reduz superfície de ataque de verdade, em vez de suprimir o alerta.
+
 ## Documentação
 
 - [Design de arquitetura](docs/DESIGN.md) — cenário, opções avaliadas, decisão
@@ -131,7 +161,8 @@ delete`) ao final de cada sessão.
 ## Status
 
 Prova de conceito validada end-to-end: local (Docker Compose) e em nuvem real
-(GKE, para node_exporter/prometheus/sidecar/grafana).
+(GKE, para node_exporter/prometheus/sidecar/grafana), com CI/CD funcionando
+(build, scan de segurança e publicação automática das imagens).
 
 ## Backlog
 
@@ -140,8 +171,6 @@ Próximos passos planejados, não implementados ainda:
 - **Multi-região** — dois clusters GKE em regiões diferentes, replicando a
   separação Global / Região Restrita já descrita em `docs/DESIGN.md`
 - **Deploy de `api`/`postgres` no Kubernetes** — hoje só rodam via Docker Compose local
-- **CI/CD** — build+push automático (GHCR) com scan de segurança (Trivy); deploy
-  manual via `workflow_dispatch`, já que o cluster é efêmero por design
 - **Mais previsão de falha** — Prophet em outras métricas (CPU, disco, conexões
   do Postgres, latência da API), detecção de anomalia real vs. limiar fixo,
   alertas preditivos no lado da aplicação (taxa de erro crescendo)
