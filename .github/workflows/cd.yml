@@ -36,5 +36,10 @@ jobs:
           sed -i "s|ghcr.io/roger-macedo-dev/sentinel-sidecar:.*|ghcr.io/roger-macedo-dev/sentinel-sidecar:${{ inputs.image_tag }}|" k8s/sidecar.yaml
           sed -i "s|ghcr.io/roger-macedo-dev/sentinel-api:.*|ghcr.io/roger-macedo-dev/sentinel-api:${{ inputs.image_tag }}|" k8s/api.yaml
 
+      - name: Calcular checksum da config do Prometheus
+        run: |
+          CHECKSUM=$(sha256sum k8s/prometheus-config.yaml | cut -c1-16)
+          sed -i "s|config-checksum: .*|config-checksum: \"$CHECKSUM\"|" k8s/prometheus.yaml
+
       - name: Deploy no cluster
         run: kubectl apply -f k8s/

@@ -9,6 +9,8 @@ spec:
       app: prometheus
   template:
     metadata:
+      annotations:
+        config-checksum: "inicial"
       labels:
         app: prometheus
     spec:
