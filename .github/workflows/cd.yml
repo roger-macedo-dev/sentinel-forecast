@@ -35,11 +35,12 @@ jobs:
         run: |
           sed -i "s|ghcr.io/roger-macedo-dev/sentinel-sidecar:.*|ghcr.io/roger-macedo-dev/sentinel-sidecar:${{ inputs.image_tag }}|" k8s/sidecar.yaml
           sed -i "s|ghcr.io/roger-macedo-dev/sentinel-api:.*|ghcr.io/roger-macedo-dev/sentinel-api:${{ inputs.image_tag }}|" k8s/api.yaml
+        
 
-      - name: Calcular checksum da config do Prometheus
+
+      - name: Calcular checksums das configs
         run: |
-          CHECKSUM=$(sha256sum k8s/prometheus-config.yaml | cut -c1-16)
-          sed -i "s|config-checksum: .*|config-checksum: \"$CHECKSUM\"|" k8s/prometheus.yaml
-
-      - name: Deploy no cluster
-        run: kubectl apply -f k8s/
+          CHECKSUM_PROM=$(sha256sum k8s/prometheus-config.yaml | cut -c1-16)
+          sed -i "s|config-checksum: .*|config-checksum: \"$CHECKSUM_PROM\"|" k8s/prometheus.yaml
+          CHECKSUM_GRAFANA=$(cat k8s/grafana-datasources-configmap.yaml k8s/grafana-dashboards-provider-configmap.yaml k8s/grafana-dashboards-configmap.yaml | sha256sum | cut -c1-16)
+          sed -i "s|config-checksum: .*|config-checksum: \"$CHECKSUM_GRAFANA\"|" k8s/grafana.yaml

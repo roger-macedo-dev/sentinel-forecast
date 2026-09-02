@@ -1,0 +1,18 @@
+apiVersion: v1
+data:
+  provider.yml: |
+    apiVersion: 1
+
+    providers:
+      - name: sentinel-forecast
+        orgId: 1
+        folder: ''
+        type: file
+        disableDeletion: true
+        allowUiUpdates: false
+        options:
+          path: /var/lib/grafana/dashboards
+          foldersFromFilesStructure: false
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards-provider
