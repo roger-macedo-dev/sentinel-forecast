@@ -90,7 +90,7 @@ no GHCR), `grafana` (Deployment com `PersistentVolumeClaim` para não perder
 dashboards/datasources em caso de restart do Pod).
 
 > Nota: `api` e `postgres` (multi-tenant) ainda existem só no Docker Compose local
-> — deploy desses dois no Kubernetes é o próximo passo do backlog.
+> — deploy desses dois no Kubernetes é backlog (ver abaixo).
 
 Prometheus e Grafana são expostos via `Service type: LoadBalancer` (IP público
 gerenciado pela cloud).
@@ -131,7 +131,23 @@ delete`) ao final de cada sessão.
 ## Status
 
 Prova de conceito validada end-to-end: local (Docker Compose) e em nuvem real
-(GKE, para node_exporter/prometheus/sidecar/grafana). Backlog: deploy de
-api/postgres no Kubernetes, multi-região (replicar a separação de ambientes
-descrita no design doc), HPA/autoscaling, réplicas do sidecar por
-squad/namespace.
+(GKE, para node_exporter/prometheus/sidecar/grafana).
+
+## Backlog
+
+Próximos passos planejados, não implementados ainda:
+
+- **Multi-região** — dois clusters GKE em regiões diferentes, replicando a
+  separação Global / Região Restrita já descrita em `docs/DESIGN.md`
+- **Deploy de `api`/`postgres` no Kubernetes** — hoje só rodam via Docker Compose local
+- **CI/CD** — build+push automático (GHCR) com scan de segurança (Trivy); deploy
+  manual via `workflow_dispatch`, já que o cluster é efêmero por design
+- **Mais previsão de falha** — Prophet em outras métricas (CPU, disco, conexões
+  do Postgres, latência da API), detecção de anomalia real vs. limiar fixo,
+  alertas preditivos no lado da aplicação (taxa de erro crescendo)
+- **Auto-remediação de alertas** — reação automática a alertas críticos (restart
+  de Pod, limpeza de disco, scaling), via Alertmanager webhooks ou operators
+- **HPA / autoscaling** — escalonamento automático de réplicas
+- **Streaming (Kafka)** — desacoplar API→banco via eventos (mesmo padrão do
+  `pedidos-app`); e/ou métricas em tempo real via Kafka Streams/ksqlDB no lugar
+  do scrape pull-based do Prometheus
