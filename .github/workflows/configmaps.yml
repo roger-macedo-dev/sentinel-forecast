@@ -1,0 +1,45 @@
+name: ConfigMaps
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verificar-sincronia:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Regenerar ConfigMaps a partir das fontes
+        run: |
+          kubectl create configmap grafana-datasources \
+            --from-file=observability/grafana/provisioning/datasources/prometheus.yml \
+            --dry-run=client -o yaml > k8s/grafana-datasources-configmap.yaml
+          kubectl create configmap grafana-dashboards-provider \
+            --from-file=observability/grafana/provisioning/dashboards/provider.yml \
+            --dry-run=client -o yaml > k8s/grafana-dashboards-provider-configmap.yaml
+          kubectl create configmap grafana-dashboards \
+            --from-file=observability/grafana/dashboards/sentinel-forecast.json \
+            --dry-run=client -o yaml > k8s/grafana-dashboards-configmap.yaml
+          kubectl create configmap alertmanager-config \
+            --from-file=observability/alertmanager/alertmanager.yml \
+            --dry-run=client -o yaml > k8s/alertmanager-configmap.yaml
+          kubectl create configmap sidecar-config \
+            --from-file=observability/sidecar/previsoes.yml \
+            --dry-run=client -o yaml > k8s/sidecar-config-configmap.yaml
+          kubectl create configmap postgres-init \
+            --from-file=postgres-init/init.sql \
+            --dry-run=client -o yaml > k8s/postgres-init-configmap.yaml
+
+      - name: Falhar se estiverem desatualizados
+        run: |
+          if ! git diff --quiet k8s/; then
+            echo "::error::ConfigMaps em k8s/ estao fora de sincronia com os arquivos fonte."
+            echo "Rode os comandos 'kubectl create configmap ... --dry-run=client -o yaml' e commite o resultado."
+            git diff k8s/
+            exit 1
+          fi
+          echo "ConfigMaps sincronizados."
