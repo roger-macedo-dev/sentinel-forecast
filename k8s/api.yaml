@@ -33,6 +33,13 @@ spec:
                 secretKeyRef:
                   name: postgres-credenciais
                   key: POSTGRES_PASSWORD
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
           ports:
             - containerPort: 5000
 ---
