@@ -48,7 +48,7 @@ api (multi-tenant) -> postgres (dashboards)   (previsão computada)
 | Aplicação | Python, Flask |
 | Banco de dados | PostgreSQL 16, multi-tenant (schema por cliente) |
 | Forecasting | Python, Flask, Prophet, pandas |
-| Observabilidade | Prometheus, Grafana, node_exporter, postgres_exporter |
+| Observabilidade | Prometheus, Alertmanager, Grafana, node_exporter, postgres_exporter |
 | Orquestração | Kubernetes (testado em GKE) |
 | IaC / Deploy | Docker Compose (local), manifests Kubernetes (`k8s/`) |
 | Cloud | Google Cloud Platform |
@@ -95,6 +95,7 @@ A stack inteira roda no cluster:
 | `sidecar` | Deployment, imagem publicada no GHCR pelo CI |
 | `grafana` | Deployment com PVC, datasource e dashboard provisionados via código |
 | `postgres` | Deployment + PVC, `PGDATA` em subdiretório (disco novo vem com `lost+found`, e o Postgres recusa diretório não-vazio) |
+| `alertmanager` | Deployment + ConfigMap, roteamento e inibição por severidade |
 | `postgres-exporter` | Deployment, credenciais lidas do Secret |
 | `api` | Deployment, credenciais do banco lidas do Secret |
 
@@ -134,14 +135,30 @@ lido em relação ao número de vCPUs, não como percentual.
 
 ## Alertas
 
-3 regras segmentadas por criticidade, sobre a métrica prevista
-(`observability/prometheus/alert-rules.yml`):
+3 regras sobre a métrica **prevista** (não a métrica bruta), em
+`observability/prometheus/alert-rules.yml`. As três compartilham o mesmo
+`alertname` e se diferenciam pelo rótulo `severity` — é isso que permite ao
+Alertmanager tratá-las como o mesmo problema em gravidades diferentes:
 
 | Alerta | Condição | Severidade |
 |---|---|---|
-| `MemoriaPrevisaoInfo` | previsão > 70% | info |
-| `MemoriaPrevisaoWarning` | previsão > 85% | warning |
-| `MemoriaPrevisaoCritical` | previsão > 95% | critical |
+| `MemoriaPrevisao` | previsão > 70% | info |
+| `MemoriaPrevisao` | previsão > 85% | warning |
+| `MemoriaPrevisao` | previsão > 95% | critical |
+
+### Roteamento (Alertmanager)
+
+Configuração em `observability/alertmanager/alertmanager.yml`:
+
+- **Agrupamento** por `alertname` — uma notificação por problema, não uma por instância
+- **Urgência diferenciada**: severidade `critical` agrupa mais rápido
+  (`group_wait` 10s vs 30s) e reincide mais cedo (`repeat_interval` 1h vs 4h)
+- **Inibição em cascata**: enquanto o `critical` estiver disparando, o `warning` e
+  o `info` do mesmo alerta são suprimidos — evita três notificações do mesmo
+  incidente
+
+Validado injetando as três severidades simultaneamente: apenas o `critical`
+permanece ativo, os outros dois entram em `suppressed`.
 
 ## CI/CD
 
@@ -200,8 +217,9 @@ Também roda inteira localmente via Docker Compose.
 - **Mais previsão de falha** — Prophet em outras métricas (CPU, disco, conexões
   do Postgres, latência da API), detecção de anomalia real vs. limiar fixo,
   alertas preditivos no lado da aplicação (taxa de erro crescendo)
-- **Auto-remediação de alertas** — reação automática a alertas críticos (restart
-  de Pod, limpeza de disco, scaling), via Alertmanager webhooks ou operators
+- **Auto-remediação de alertas** — receiver `webhook` no Alertmanager disparando
+  ação automática em alerta crítico (restart de Pod, limpeza de disco, scaling);
+  o roteamento já está pronto, falta o serviço que executa a correção
 - **HPA / autoscaling** — escalonamento automático de réplicas
 - **Persistência do Prometheus** — hoje o histórico de métricas é efêmero;
   adicionar PVC para sobreviver a restart do Pod

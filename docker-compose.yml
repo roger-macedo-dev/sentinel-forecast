@@ -46,3 +46,10 @@ services:
       - "5000:5000"
     depends_on:
       - postgres
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
