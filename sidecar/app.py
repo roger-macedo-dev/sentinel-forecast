@@ -20,7 +20,7 @@ app = Flask(__name__)
 
 PROMETHEUS_URL = os.environ.get("PROMETHEUS_URL", "http://prometheus:9090")
 CONFIG_PATH = os.environ.get("PREVISOES_CONFIG", "/config/previsoes.yml")
-INTERVALO_SEGUNDOS = int(os.environ.get("INTERVALO_SEGUNDOS", "60"))
+INTERVALO_SEGUNDOS = int(os.environ.get("INTERVALO_SEGUNDOS", "300"))
 HORIZONTE_HORAS = int(os.environ.get("HORIZONTE_HORAS", "1"))
 
 # Uma unica metrica com rotulo 'alvo', em vez de uma metrica por recurso:
