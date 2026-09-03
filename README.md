@@ -115,7 +115,7 @@ A stack inteira roda no cluster:
 | `alertmanager` | Deployment + ConfigMap, roteamento e inibição por severidade |
 | `remediador` | Deployment + ServiceAccount/Role/RoleBinding com permissão mínima (`get`/`patch` em `deployments`) |
 | `postgres-exporter` | Deployment, credenciais lidas do Secret |
-| `api` | Deployment, credenciais do banco lidas do Secret |
+| `api` | Deployment com `resources` declarados + `HorizontalPodAutoscaler` (1–4 réplicas), credenciais do banco lidas do Secret |
 
 Credenciais do banco ficam em `Secret`; o script de criação dos schemas
 multi-tenant é entregue via `ConfigMap` montado em
@@ -131,6 +131,30 @@ config antiga em memória. Em vez de reiniciar tudo a cada deploy, o CD grava um
 **checksum da config numa annotation do Pod**: se a config mudou, o template do
 Pod muda e o Kubernetes faz rolling update sozinho; se não mudou, nada é
 reiniciado.
+
+### Escalonamento automático
+
+A `api` tem `HorizontalPodAutoscaler` (1 a 4 réplicas, alvo de 60% de CPU). Dois
+detalhes que decidem se funciona:
+
+- **`resources.requests` é pré-requisito** — o HPA mede utilização como
+  percentual do request. Sem request declarado não há denominador, e o
+  autoscaler não escala.
+- **Redução com janela de estabilização (120s)** — subida imediata, descida
+  conservadora. Sem isso, o número de réplicas oscila a cada respiro da carga.
+
+**HPA sozinho tem teto.** Ele cria Pods; não cria capacidade. No teste com carga
+real, o autoscaler subiu para 4 réplicas e a quarta ficou `Pending` com
+`Insufficient cpu` — o node não tinha espaço. São duas camadas independentes:
+
+| Camada | O que cria | Sem ela |
+|---|---|---|
+| HorizontalPodAutoscaler | Pods | A aplicação não acompanha a demanda |
+| Cluster Autoscaler | Nodes | Os Pods extras ficam `Pending` |
+
+Por isso o cluster é criado com autoscaling de nodes habilitado (ver comando
+abaixo). Com as duas camadas ativas, o Pod pendente provocou o provisionamento de
+um node novo e passou a rodar.
 
 ### Persistência de métricas
 
@@ -308,9 +332,18 @@ Reduz superfície de ataque de verdade, em vez de suprimir o alerta.
 ## Custo e disciplina de uso
 
 Cluster GKE não fica ativo permanentemente — control plane é isento (1 cluster
-por conta de billing), mas nodes cobram por hora. Fluxo de trabalho: provisiona
-(`gcloud container clusters create`), testa, deleta (`gcloud container clusters
-delete`) ao final de cada sessão.
+por conta de billing), mas nodes cobram por hora.
+
+```bash
+gcloud container clusters create sentinel-forecast-cluster \
+  --zone us-central1-a \
+  --num-nodes 1 --machine-type e2-medium --disk-size 30 \
+  --enable-autoscaling --min-nodes 1 --max-nodes 3
+```
+
+Ao final de cada sessão, `gcloud container clusters delete`. **Deletar o cluster
+não remove os discos dos PVCs** — é preciso conferir `gcloud compute disks list`
+e apagá-los, senão continuam sendo cobrados.
 
 ## Status
 
@@ -336,7 +369,6 @@ Também roda inteira localmente via Docker Compose.
   métricas de infraestrutura
 - **Mais ações de remediação** — hoje só `rollout restart`; adicionar limpeza de
   disco e escalonamento de réplicas como ações possíveis
-- **HPA / autoscaling** — escalonamento automático de réplicas
 - **Streaming (Kafka)** — desacoplar API→banco via eventos (mesmo padrão do
   `pedidos-app`); e/ou métricas em tempo real via Kafka Streams/ksqlDB no lugar
   do scrape pull-based do Prometheus
