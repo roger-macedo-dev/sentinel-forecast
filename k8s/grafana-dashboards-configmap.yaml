@@ -641,7 +641,8 @@ data:
         },
         {
           "type": "timeseries",
-          "title": "Conexões ativas",
+          "title": "Saturação de conexões",
+          "description": "Conexoes em uso sobre o limite de max_connections. O numero absoluto nao diz nada sem o teto: quando satura, a aplicacao simplesmente nao consegue conectar.",
           "gridPos": {
             "h": 6,
             "w": 9,
@@ -655,22 +656,43 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(pg_stat_database_numbackends)",
-              "legendFormat": "Conexões"
+              "expr": "sum(pg_stat_database_numbackends) / max(pg_settings_max_connections) * 100",
+              "legendFormat": "Uso do limite"
             }
           ],
           "fieldConfig": {
             "defaults": {
-              "unit": "none",
+              "unit": "percent",
               "min": 0,
-              "decimals": 0,
+              "max": 100,
+              "decimals": 1,
               "color": {
-                "mode": "palette-classic"
+                "mode": "thresholds"
               },
               "custom": {
                 "lineWidth": 2,
                 "fillOpacity": 8,
-                "showPoints": "never"
+                "showPoints": "never",
+                "thresholdsStyle": {
+                  "mode": "dashed"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "#EAB839",
+                    "value": 70
+                  },
+                  {
+                    "color": "red",
+                    "value": 90
+                  }
+                ]
               }
             },
             "overrides": []
@@ -758,96 +780,14 @@ data:
           }
         },
         {
-          "type": "row",
-          "title": "Postgres — capacidade e saúde",
-          "gridPos": {
-            "h": 1,
-            "w": 24,
-            "x": 0,
-            "y": 30
-          },
-          "collapsed": false,
-          "panels": []
-        },
-        {
-          "type": "timeseries",
-          "title": "Saturação de conexões",
-          "description": "Conexoes em uso sobre o limite de max_connections. O numero absoluto nao diz nada sem o teto: quando satura, a aplicacao simplesmente nao consegue conectar.",
-          "gridPos": {
-            "h": 7,
-            "w": 8,
-            "x": 0,
-            "y": 31
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum(pg_stat_database_numbackends) / max(pg_settings_max_connections) * 100",
-              "legendFormat": "Uso do limite"
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "percent",
-              "min": 0,
-              "max": 100,
-              "decimals": 1,
-              "color": {
-                "mode": "thresholds"
-              },
-              "custom": {
-                "lineWidth": 2,
-                "fillOpacity": 8,
-                "showPoints": "never",
-                "thresholdsStyle": {
-                  "mode": "dashed"
-                }
-              },
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": null
-                  },
-                  {
-                    "color": "#EAB839",
-                    "value": 70
-                  },
-                  {
-                    "color": "red",
-                    "value": 90
-                  }
-                ]
-              }
-            },
-            "overrides": []
-          },
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": false
-            },
-            "tooltip": {
-              "mode": "single",
-              "sort": "none"
-            }
-          }
-        },
-        {
           "type": "timeseries",
           "title": "Conexões por estado",
           "description": "'idle in transaction' e o estado perigoso: conexao ociosa segurando transacao aberta, o que retem locks e impede o autovacuum de limpar.",
           "gridPos": {
             "h": 7,
             "w": 8,
-            "x": 8,
-            "y": 31
+            "x": 0,
+            "y": 30
           },
           "datasource": {
             "type": "prometheus",
@@ -895,8 +835,8 @@ data:
           "gridPos": {
             "h": 7,
             "w": 8,
-            "x": 16,
-            "y": 31
+            "x": 8,
+            "y": 30
           },
           "datasource": {
             "type": "prometheus",
@@ -959,125 +899,6 @@ data:
           }
         },
         {
-          "type": "barchart",
-          "title": "Tamanho por cliente (schema)",
-          "description": "Cada cliente e um schema isolado. Mostra qual tenant mais cresce.",
-          "gridPos": {
-            "h": 7,
-            "w": 8,
-            "x": 0,
-            "y": 38
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum by (schemaname) (pg_stat_user_tables_size_bytes)",
-              "instant": true,
-              "format": "table"
-            }
-          ],
-          "transformations": [
-            {
-              "id": "organize",
-              "options": {
-                "excludeByName": {
-                  "Time": true
-                }
-              }
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "bytes",
-              "min": 0,
-              "color": {
-                "mode": "fixed",
-                "fixedColor": "super-light-blue"
-              },
-              "custom": {
-                "lineWidth": 0,
-                "fillOpacity": 90
-              }
-            },
-            "overrides": []
-          },
-          "options": {
-            "orientation": "horizontal",
-            "showValue": "always",
-            "legend": {
-              "showLegend": false
-            },
-            "tooltip": {
-              "mode": "single",
-              "sort": "none"
-            }
-          }
-        },
-        {
-          "type": "barchart",
-          "title": "Dead tuples por cliente (schema)",
-          "description": "Tuplas mortas acumuladas indicam autovacuum nao dando conta: incham a tabela, degradam consultas e consomem disco.",
-          "gridPos": {
-            "h": 7,
-            "w": 8,
-            "x": 8,
-            "y": 38
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum by (schemaname) (pg_stat_user_tables_n_dead_tup)",
-              "instant": true,
-              "format": "table"
-            }
-          ],
-          "transformations": [
-            {
-              "id": "organize",
-              "options": {
-                "excludeByName": {
-                  "Time": true
-                }
-              }
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "none",
-              "min": 0,
-              "decimals": 0,
-              "color": {
-                "mode": "fixed",
-                "fixedColor": "text"
-              },
-              "custom": {
-                "lineWidth": 0,
-                "fillOpacity": 60
-              }
-            },
-            "overrides": []
-          },
-          "options": {
-            "orientation": "horizontal",
-            "showValue": "always",
-            "legend": {
-              "showLegend": false
-            },
-            "tooltip": {
-              "mode": "single",
-              "sort": "none"
-            }
-          }
-        },
-        {
           "type": "timeseries",
           "title": "Deadlocks",
           "description": "Contador crescente indica concorrencia mal resolvida na aplicacao.",
@@ -1085,7 +906,7 @@ data:
             "h": 7,
             "w": 8,
             "x": 16,
-            "y": 38
+            "y": 30
           },
           "datasource": {
             "type": "prometheus",
@@ -1143,13 +964,132 @@ data:
           }
         },
         {
+          "type": "barchart",
+          "title": "Tamanho por cliente (schema)",
+          "description": "Cada cliente e um schema isolado. Mostra qual tenant mais cresce.",
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 0,
+            "y": 37
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (schemaname) (pg_stat_user_tables_size_bytes)",
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                }
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "min": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "super-light-blue"
+              },
+              "custom": {
+                "lineWidth": 0,
+                "fillOpacity": 90
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "orientation": "horizontal",
+            "showValue": "always",
+            "legend": {
+              "showLegend": false
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          }
+        },
+        {
+          "type": "barchart",
+          "title": "Dead tuples por cliente (schema)",
+          "description": "Tuplas mortas acumuladas indicam autovacuum nao dando conta: incham a tabela, degradam consultas e consomem disco.",
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 12,
+            "y": 37
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (schemaname) (pg_stat_user_tables_n_dead_tup)",
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                }
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "min": 0,
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "custom": {
+                "lineWidth": 0,
+                "fillOpacity": 60
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "orientation": "horizontal",
+            "showValue": "always",
+            "legend": {
+              "showLegend": false
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          }
+        },
+        {
           "type": "row",
           "title": "Remediação automática",
           "gridPos": {
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 45
+            "y": 44
           },
           "collapsed": false,
           "panels": []
@@ -1162,7 +1102,7 @@ data:
             "h": 6,
             "w": 6,
             "x": 0,
-            "y": 46
+            "y": 45
           },
           "datasource": {
             "type": "prometheus",
@@ -1208,7 +1148,7 @@ data:
             "h": 6,
             "w": 9,
             "x": 6,
-            "y": 46
+            "y": 45
           },
           "datasource": {
             "type": "prometheus",
@@ -1269,7 +1209,7 @@ data:
             "h": 6,
             "w": 9,
             "x": 15,
-            "y": 46
+            "y": 45
           },
           "datasource": {
             "type": "prometheus",
