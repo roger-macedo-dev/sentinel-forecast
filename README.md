@@ -46,6 +46,7 @@ api (multi-tenant) -> postgres (dashboards)   (previsão computada)
 | Camada | Tecnologia |
 |---|---|
 | Aplicação | Python, Flask |
+| Auto-remediação | Python, Flask, client oficial do Kubernetes |
 | Banco de dados | PostgreSQL 16, multi-tenant (schema por cliente) |
 | Forecasting | Python, Flask, Prophet, pandas |
 | Observabilidade | Prometheus, Alertmanager, Grafana, node_exporter, postgres_exporter |
@@ -96,6 +97,7 @@ A stack inteira roda no cluster:
 | `grafana` | Deployment com PVC, datasource e dashboard provisionados via código |
 | `postgres` | Deployment + PVC, `PGDATA` em subdiretório (disco novo vem com `lost+found`, e o Postgres recusa diretório não-vazio) |
 | `alertmanager` | Deployment + ConfigMap, roteamento e inibição por severidade |
+| `remediador` | Deployment + ServiceAccount/Role/RoleBinding com permissão mínima (`get`/`patch` em `deployments`) |
 | `postgres-exporter` | Deployment, credenciais lidas do Secret |
 | `api` | Deployment, credenciais do banco lidas do Secret |
 
@@ -127,6 +129,8 @@ Organizado em três seções:
 - **Infraestrutura do node** — painéis de tendência (CPU, Memória, Disco, Rede,
   Load average)
 - **Banco de dados** — status do Postgres, conexões ativas e cache hit ratio
+- **Remediação automática** — quantas ações foram executadas, em quais serviços, e
+  quantas foram bloqueadas por qual proteção
 
 Critério de formatação: threshold de status só onde existe um teto físico real
 (CPU/Memória/Disco em %, cache hit ratio). Rede fica sem threshold, por não ter
@@ -159,6 +163,46 @@ Configuração em `observability/alertmanager/alertmanager.yml`:
 
 Validado injetando as três severidades simultaneamente: apenas o `critical`
 permanece ativo, os outros dois entram em `suppressed`.
+
+## Auto-remediação
+
+O receiver `critical` do Alertmanager aponta para o serviço `remediador`
+(`remediador/`), que executa a correção automática — hoje, `rollout restart` do
+Deployment afetado.
+
+O alvo **não é fixo no código**: vem do rótulo `target` da própria regra de
+alerta, então é a regra que declara o que deve ser remediado.
+
+### Proteções
+
+Ação automática mal configurada causa mais dano que o alerta que a originou. Três
+guardas, e todas emitem métrica quando bloqueiam:
+
+| Proteção | O que evita |
+|---|---|
+| **Allowlist** | Reiniciar um serviço que não deveria ser tocado, mesmo que o alerta peça |
+| **Cooldown** (10 min por alvo) | Loop de restart quando o alerta persiste depois da ação |
+| **Revalidação de severidade** | Agir por engano se o roteamento do Alertmanager for alterado no futuro |
+
+Além disso, `DRY_RUN` controla se a ação é executada ou apenas registrada — no
+Docker Compose local roda em dry-run (não há cluster para agir), no Kubernetes
+executa de fato.
+
+### Permissões no cluster
+
+O remediador usa uma `ServiceAccount` dedicada com um `Role` de escopo de
+namespace concedendo apenas `get` e `patch` sobre `deployments`. Não pode criar,
+excluir, ler Secrets nem alcançar outros namespaces: se o serviço for
+comprometido, o alcance máximo é reiniciar Deployments do próprio namespace — e a
+allowlist restringe ainda mais.
+
+### Observabilidade da própria remediação
+
+`remediacoes_total{alvo,resultado}` e `remediacoes_bloqueadas_total{motivo}` são
+expostas ao Prometheus e visualizadas no dashboard. Sem isso, a ação automática
+seria uma caixa-preta: volume alto de bloqueios por `cooldown` indica alerta em
+loop; por `fora_da_allowlist`, divergência entre a regra de alerta e a
+configuração do remediador.
 
 ## CI/CD
 
@@ -217,9 +261,8 @@ Também roda inteira localmente via Docker Compose.
 - **Mais previsão de falha** — Prophet em outras métricas (CPU, disco, conexões
   do Postgres, latência da API), detecção de anomalia real vs. limiar fixo,
   alertas preditivos no lado da aplicação (taxa de erro crescendo)
-- **Auto-remediação de alertas** — receiver `webhook` no Alertmanager disparando
-  ação automática em alerta crítico (restart de Pod, limpeza de disco, scaling);
-  o roteamento já está pronto, falta o serviço que executa a correção
+- **Mais ações de remediação** — hoje só `rollout restart`; adicionar limpeza de
+  disco e escalonamento de réplicas como ações possíveis
 - **HPA / autoscaling** — escalonamento automático de réplicas
 - **Persistência do Prometheus** — hoje o histórico de métricas é efêmero;
   adicionar PVC para sobreviver a restart do Pod

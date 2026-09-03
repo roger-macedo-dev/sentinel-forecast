@@ -53,3 +53,12 @@ services:
       - "9093:9093"
     volumes:
       - ./observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+
+  remediador:
+    build: ./remediador
+    environment:
+      - DRY_RUN=true
+      - ALLOWLIST=sidecar,api
+      - COOLDOWN_SEGUNDOS=600
+    ports:
+      - "8080:8080"

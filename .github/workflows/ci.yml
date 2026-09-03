@@ -21,7 +21,7 @@ jobs:
 
     strategy:
       matrix:
-        service: [sidecar, api]
+        service: [sidecar, api, remediador]
 
     steps:
       - name: Checkout

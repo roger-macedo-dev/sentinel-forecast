@@ -35,5 +35,8 @@ inhibit_rules:
 receivers:
   - name: padrao
   - name: critico
+    webhook_configs:
+      - url: http://remediador:8080/webhook
+        send_resolved: false
   - name: atencao
   - name: silencioso

@@ -35,6 +35,7 @@ jobs:
         run: |
           sed -i "s|ghcr.io/roger-macedo-dev/sentinel-sidecar:.*|ghcr.io/roger-macedo-dev/sentinel-sidecar:${{ inputs.image_tag }}|" k8s/sidecar.yaml
           sed -i "s|ghcr.io/roger-macedo-dev/sentinel-api:.*|ghcr.io/roger-macedo-dev/sentinel-api:${{ inputs.image_tag }}|" k8s/api.yaml
+          sed -i "s|ghcr.io/roger-macedo-dev/sentinel-remediador:.*|ghcr.io/roger-macedo-dev/sentinel-remediador:${{ inputs.image_tag }}|" k8s/remediador.yaml
 
       - name: Calcular checksums das configs
         run: |

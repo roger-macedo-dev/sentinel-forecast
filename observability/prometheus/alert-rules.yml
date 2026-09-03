@@ -24,6 +24,7 @@ groups:
         for: 5m
         labels:
           severity: critical
+          target: sidecar
         annotations:
           summary: "Previsao de memoria acima de 95% - risco iminente"
           description: "Tendencia projetada: {{ $value | humanize }}%. Acao imediata recomendada."

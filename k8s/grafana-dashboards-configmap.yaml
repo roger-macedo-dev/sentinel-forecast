@@ -442,6 +442,102 @@ data:
             "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false },
             "tooltip": { "mode": "single", "sort": "none" }
           }
+        },
+        {
+          "type": "row",
+          "title": "Remediação automática",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 30 },
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "type": "stat",
+          "title": "Remediações executadas",
+          "description": "Total de acoes de remediacao disparadas por alerta critico.",
+          "gridPos": { "h": 6, "w": 6, "x": 0, "y": 31 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(remediacoes_total)",
+              "instant": true,
+              "legendFormat": "Total"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "decimals": 0,
+              "color": { "mode": "fixed", "fixedColor": "text" }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+          }
+        },
+        {
+          "type": "bargauge",
+          "title": "Remediações por serviço",
+          "description": "Em quais servicos o remediador precisou atuar.",
+          "gridPos": { "h": 6, "w": 9, "x": 6, "y": 31 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (alvo) (remediacoes_total)",
+              "instant": true,
+              "legendFormat": "{{alvo}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "decimals": 0,
+              "min": 0,
+              "color": { "mode": "fixed", "fixedColor": "super-light-blue" }
+            },
+            "overrides": []
+          },
+          "options": {
+            "displayMode": "gradient",
+            "orientation": "horizontal",
+            "showUnfilled": true,
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+          }
+        },
+        {
+          "type": "bargauge",
+          "title": "Remediações bloqueadas por motivo",
+          "description": "Acoes recusadas pelas protecoes. Volume alto de 'cooldown' sugere alerta em loop; de 'fora_da_allowlist', configuracao divergente entre alerta e remediador.",
+          "gridPos": { "h": 6, "w": 9, "x": 15, "y": 31 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (motivo) (remediacoes_bloqueadas_total)",
+              "instant": true,
+              "legendFormat": "{{motivo}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "decimals": 0,
+              "min": 0,
+              "color": { "mode": "fixed", "fixedColor": "text" }
+            },
+            "overrides": []
+          },
+          "options": {
+            "displayMode": "gradient",
+            "orientation": "horizontal",
+            "showUnfilled": true,
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+          }
         }
       ]
     }

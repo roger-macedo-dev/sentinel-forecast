@@ -16,6 +16,9 @@ data:
       - job_name: postgres_exporter
         static_configs:
           - targets: ["postgres-exporter:9187"]
+      - job_name: remediador
+        static_configs:
+          - targets: ["remediador:8080"]
     alerting:
       alertmanagers:
         - static_configs:
@@ -45,5 +48,6 @@ data:
             for: 5m
             labels:
               severity: critical
+              target: sidecar
             annotations:
               summary: "Previsao critica de memoria"
