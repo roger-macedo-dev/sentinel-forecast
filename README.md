@@ -34,7 +34,7 @@ api (multi-tenant) -> postgres (dashboards)   (previsão computada)
 - `postgres_exporter` traduz estatísticas internas do Postgres (conexões,
   cache hit ratio) em métricas Prometheus
 - `sidecar` consulta o histórico via API do Prometheus, treina um modelo Prophet
-  a cada minuto, expõe a previsão como métrica nova (`memoria_previsao_percentual`)
+  por métrica a cada minuto e expõe o resultado como `previsao_percentual{alvo}`
 - `Prometheus` faz scrape de volta dessa métrica computada — o ciclo se fecha
 - Alertas segmentados por criticidade (info/warning/critical) disparam sobre a
   métrica **prevista**, não a métrica bruta
@@ -147,8 +147,8 @@ dashboard pronto, sem configuração manual na interface.
 
 Organizado em três seções:
 
-- **Resumo** — Stat panels com os valores atuais (Previsão de memória, CPU,
-  Memória), cor dinâmica por threshold
+- **Resumo** — as quatro previsões para a próxima hora (memória, CPU, disco,
+  conexões), com cor dinâmica por threshold
 - **Infraestrutura do node** — painéis de tendência (CPU, Memória, Disco, Rede,
   Load average)
 - **Banco de dados (multi-tenant)** — disponibilidade, **saturação de conexões**
@@ -164,6 +164,41 @@ Critério de formatação: threshold de status só onde existe um teto físico r
 capacidade máxima definida, e load average aparece em valor absoluto — deve ser
 lido em relação ao número de vCPUs, não como percentual.
 
+## Previsão
+
+As métricas previstas são declaradas em `observability/sidecar/previsoes.yml` —
+acrescentar uma previsão é editar YAML, sem tocar em código:
+
+```yaml
+previsoes:
+  - nome: memoria
+    query: '1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)'
+    multiplicador: 100
+```
+
+Hoje são quatro: memória, CPU, disco e saturação de conexões do Postgres. Todas
+saem como `previsao_percentual{alvo="..."}` — uma métrica com rótulo, não uma
+métrica por recurso: assim uma única regra de alerta cobre todos os alvos, e a
+métrica permanece agregável.
+
+### Por que crescimento logístico
+
+O Prophet, por padrão, extrapola a tendência recente de forma linear e
+**ilimitada**. Na prática isso produziu uma previsão de CPU de **-671%** — o
+modelo pegou uma queda brusca de uso e projetou-a por uma hora inteira.
+
+Como uso de recurso é uma grandeza limitada, o modelo é configurado com
+crescimento logístico, piso e teto. O limite passa a fazer parte do ajuste, e
+não de um corte aplicado depois. Há ainda um corte final como rede de segurança,
+porque o intervalo de confiança pode escapar um pouco dos limites.
+
+Efeito colateral conhecido: com tendência de queda numa máquina ociosa, a
+previsão satura no piso (0%) em vez de estabilizar num patamar realista.
+
+Falha ao prever um alvo não interrompe os demais, e `previsao_falhas{alvo}`
+sinaliza quando um modelo para de treinar — sem isso, a métrica ficaria congelada
+no último valor sem indicação de problema.
+
 ## Alertas
 
 3 regras sobre a métrica **prevista** (não a métrica bruta), em
@@ -173,9 +208,14 @@ Alertmanager tratá-las como o mesmo problema em gravidades diferentes:
 
 | Alerta | Condição | Severidade |
 |---|---|---|
-| `MemoriaPrevisao` | previsão > 70% | info |
-| `MemoriaPrevisao` | previsão > 85% | warning |
-| `MemoriaPrevisao` | previsão > 95% | critical |
+| `PrevisaoCapacidade` | previsão > 70% | info |
+| `PrevisaoCapacidade` | previsão > 85% | warning |
+| `PrevisaoCapacidade` | previsão > 95% | critical |
+
+As regras são escritas sobre `previsao_percentual` sem filtrar o alvo, então
+valem automaticamente para qualquer métrica adicionada ao arquivo de previsões.
+O rótulo `target` (que aciona a remediação) é aplicado apenas no crítico de
+memória, único caso em que existe uma ação automática definida.
 
 ### Roteamento (Alertmanager)
 
@@ -290,9 +330,10 @@ Também roda inteira localmente via Docker Compose.
 
 - **Multi-região** — dois clusters GKE em regiões diferentes, replicando a
   separação Global / Região Restrita já descrita em `docs/DESIGN.md`
-- **Mais previsão de falha** — Prophet em outras métricas (CPU, disco, conexões
-  do Postgres, latência da API), detecção de anomalia real vs. limiar fixo,
-  alertas preditivos no lado da aplicação (taxa de erro crescendo)
+- **Detecção de anomalia real** — comparar com baseline por horário/dia da semana,
+  em vez de extrapolação de tendência contra limiar fixo
+- **Previsão de métricas de aplicação** — latência e taxa de erro da API, além das
+  métricas de infraestrutura
 - **Mais ações de remediação** — hoje só `rollout restart`; adicionar limpeza de
   disco e escalonamento de réplicas como ações possíveis
 - **HPA / autoscaling** — escalonamento automático de réplicas
