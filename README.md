@@ -108,7 +108,7 @@ A stack inteira roda no cluster:
 | Recurso | Observação |
 |---|---|
 | `node_exporter` | DaemonSet com `hostPath`/`hostNetwork` — monitora o node real, não o container |
-| `prometheus` | Deployment + ConfigMap (config e regras de alerta) |
+| `prometheus` | Deployment + ConfigMap (config e regras de alerta) + PVC para o TSDB, com `strategy: Recreate` (volume `ReadWriteOnce` não admite dois Pods simultâneos) |
 | `sidecar` | Deployment, imagem publicada no GHCR pelo CI |
 | `grafana` | Deployment com PVC, datasource e dashboard provisionados via código |
 | `postgres` | Deployment + PVC, `PGDATA` em subdiretório (disco novo vem com `lost+found`, e o Postgres recusa diretório não-vazio) |
@@ -127,10 +127,17 @@ gerenciado pela cloud). Banco e API ficam em `ClusterIP` — sem exposição ext
 ### Recarga de configuração sem restart desnecessário
 
 `kubectl apply` atualiza um ConfigMap, mas o processo em execução continua com a
-config antiga em memória. Em vez de reiniciar tudo a cada deploy (o que apagaria
-o histórico do Prometheus), o CD grava um **checksum da config numa annotation do
-Pod**: se a config mudou, o template do Pod muda e o Kubernetes faz rolling
-update sozinho; se não mudou, nada é reiniciado.
+config antiga em memória. Em vez de reiniciar tudo a cada deploy, o CD grava um
+**checksum da config numa annotation do Pod**: se a config mudou, o template do
+Pod muda e o Kubernetes faz rolling update sozinho; se não mudou, nada é
+reiniciado.
+
+### Persistência de métricas
+
+O TSDB do Prometheus fica em `PersistentVolumeClaim` (retenção de 15 dias) — sem
+isso, todo restart do Pod apaga o histórico e o modelo Prophet precisa acumular
+dados do zero antes de voltar a prever. Localmente, o mesmo papel é feito por um
+volume nomeado do Docker.
 
 ## Dashboard
 
@@ -289,8 +296,6 @@ Também roda inteira localmente via Docker Compose.
 - **Mais ações de remediação** — hoje só `rollout restart`; adicionar limpeza de
   disco e escalonamento de réplicas como ações possíveis
 - **HPA / autoscaling** — escalonamento automático de réplicas
-- **Persistência do Prometheus** — hoje o histórico de métricas é efêmero;
-  adicionar PVC para sobreviver a restart do Pod
 - **Streaming (Kafka)** — desacoplar API→banco via eventos (mesmo padrão do
   `pedidos-app`); e/ou métricas em tempo real via Kafka Streams/ksqlDB no lugar
   do scrape pull-based do Prometheus

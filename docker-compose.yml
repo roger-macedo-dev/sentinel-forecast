@@ -9,6 +9,7 @@ services:
     volumes:
       - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - ./observability/prometheus/alert-rules.yml:/etc/prometheus/alert-rules.yml
+      - prometheus-data:/prometheus
 
   sidecar:
     build: ./sidecar
@@ -62,3 +63,6 @@ services:
       - COOLDOWN_SEGUNDOS=600
     ports:
       - "8080:8080"
+
+volumes:
+  prometheus-data:
