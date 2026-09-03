@@ -1,55 +1,145 @@
-import os                                    # variaveis de ambiente
-import time                                  # espera entre ciclos de treino
-import threading                             # roda o treino em paralelo, sem travar o /metrics
-import requests                              # consulta a API do Prometheus
-import pandas as pd                          # formato de dado exigido pelo Prophet
-from prophet import Prophet                  # biblioteca de forecasting
-from flask import Flask, Response            # expoe o endpoint /metrics
+import os
+import time
+import logging
+import threading
+
+import yaml
+import requests
+import pandas as pd
+from prophet import Prophet
+from flask import Flask
+from prometheus_client import Gauge, generate_latest, CONTENT_TYPE_LATEST
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+# O Prophet e o cmdstanpy sao muito verbosos a cada treino; silencia o ruido.
+logging.getLogger("cmdstanpy").setLevel(logging.WARNING)
+logging.getLogger("prophet").setLevel(logging.WARNING)
+log = logging.getLogger("sidecar")
 
 app = Flask(__name__)
+
 PROMETHEUS_URL = os.environ.get("PROMETHEUS_URL", "http://prometheus:9090")
-QUERY = '1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)'  # % de memoria usada
+CONFIG_PATH = os.environ.get("PREVISOES_CONFIG", "/config/previsoes.yml")
+INTERVALO_SEGUNDOS = int(os.environ.get("INTERVALO_SEGUNDOS", "60"))
+HORIZONTE_HORAS = int(os.environ.get("HORIZONTE_HORAS", "1"))
 
-ultima_previsao = None                       # guarda o resultado mais recente, lido pelo /metrics
+# Uma unica metrica com rotulo 'alvo', em vez de uma metrica por recurso:
+# permite agregar e escrever uma regra de alerta que cobre todos os alvos.
+previsao = Gauge(
+    "previsao_percentual",
+    "Previsao de uso do recurso no horizonte configurado, em percentual",
+    ["alvo"],
+)
+falhas = Gauge(
+    "previsao_falhas",
+    "1 se a ultima tentativa de previsao do alvo falhou, 0 se teve sucesso",
+    ["alvo"],
+)
 
-def buscar_historico():
+
+def carregar_config():
+    with open(CONFIG_PATH, encoding="utf-8") as f:
+        return yaml.safe_load(f)["previsoes"]
+
+
+def buscar_historico(query, janela_segundos=3600, passo="30s"):
+    """Busca a serie historica no Prometheus e devolve no formato que o Prophet
+    espera: colunas 'ds' (timestamp) e 'y' (valor)."""
     agora = time.time()
-    inicio = agora - 3600                    # ultima 1h de historico
-    resp = requests.get(f"{PROMETHEUS_URL}/api/v1/query_range", params={
-        "query": QUERY,
-        "start": inicio,
-        "end": agora,
-        "step": "30s",
-    })
+    resp = requests.get(
+        f"{PROMETHEUS_URL}/api/v1/query_range",
+        params={
+            "query": query,
+            "start": agora - janela_segundos,
+            "end": agora,
+            "step": passo,
+        },
+        timeout=30,
+    )
+    resp.raise_for_status()
     dados = resp.json()["data"]["result"]
     if not dados:
         return None
-    valores = dados[0]["values"]             # lista de [timestamp, valor]
+
+    valores = dados[0]["values"]
     df = pd.DataFrame(valores, columns=["ds", "y"])
-    df["ds"] = pd.to_datetime(df["ds"], unit="s")   # Prophet exige datetime
+    df["ds"] = pd.to_datetime(df["ds"], unit="s")
     df["y"] = df["y"].astype(float)
     return df
 
-def treinar_e_prever():
-    global ultima_previsao
+
+MINIMO_PONTOS = int(os.environ.get("MINIMO_PONTOS", "20"))
+
+
+def prever(alvo):
+    """Treina um modelo com o historico recente e devolve o valor previsto para
+    o fim do horizonte configurado."""
+    df = buscar_historico(alvo["query"])
+    if df is None or len(df) < MINIMO_PONTOS:
+        # Historico curto gera tendencia instavel: uma queda momentanea vira
+        # extrapolacao absurda. Comum logo apos subir o ambiente.
+        return None
+
+    # A metrica e limitada (ex: uso de recurso vai de 0 ate o teto). Sem informar
+    # isso, o Prophet usa crescimento linear ilimitado e extrapola a tendencia
+    # recente indefinidamente, produzindo previsoes fisicamente impossiveis
+    # (uso negativo, ou centenas de por cento).
+    teto = float(alvo.get("teto", 1.0))
+    df["cap"] = teto
+    df["floor"] = 0.0
+
+    modelo = Prophet(growth="logistic")
+    modelo.fit(df)
+
+    futuro = modelo.make_future_dataframe(periods=HORIZONTE_HORAS, freq="1h")
+    futuro["cap"] = teto
+    futuro["floor"] = 0.0
+
+    resultado = modelo.predict(futuro)
+    previsto = float(resultado.iloc[-1]["yhat"])
+
+    # Rede de seguranca: o intervalo de confianca do modelo ainda pode escapar
+    # um pouco dos limites mesmo com crescimento logistico.
+    previsto = min(max(previsto, 0.0), teto)
+    return previsto * alvo.get("multiplicador", 1)
+
+
+def ciclo():
+    alvos = carregar_config()
+    log.info("Previsoes configuradas: %s", [a["nome"] for a in alvos])
+
     while True:
-        df = buscar_historico()
-        if df is not None and len(df) >= 10:  # Prophet precisa de um minimo de pontos
-            modelo = Prophet()
-            modelo.fit(df)
-            futuro = modelo.make_future_dataframe(periods=1, freq="1h")  # projeta 1h a frente
-            previsao = modelo.predict(futuro)
-            ultima_previsao = previsao.iloc[-1]["yhat"] * 100   # valor previsto, em %
-            print(f"Nova previsao: {ultima_previsao:.2f}%")
-        time.sleep(60)                        # retreina a cada 1 minuto
+        for alvo in alvos:
+            nome = alvo["nome"]
+            try:
+                valor = prever(alvo)
+            except Exception as erro:
+                # Falha em um alvo nao pode derrubar a previsao dos demais.
+                falhas.labels(alvo=nome).set(1)
+                log.error("Falha ao prever '%s': %s", nome, erro)
+                continue
+
+            falhas.labels(alvo=nome).set(0)
+            if valor is None:
+                log.info("Sem historico suficiente para prever '%s'", nome)
+                continue
+
+            previsao.labels(alvo=nome).set(valor)
+            log.info("Previsao de '%s': %.2f%%", nome, valor)
+
+        time.sleep(INTERVALO_SEGUNDOS)
+
 
 @app.route("/metrics")
 def metrics():
-    if ultima_previsao is None:
-        return Response("# sem previsao ainda\n", mimetype="text/plain")
-    linha = f"memoria_previsao_percentual {ultima_previsao:.4f}\n"
-    return Response(linha, mimetype="text/plain")
+    return generate_latest(), 200, {"Content-Type": CONTENT_TYPE_LATEST}
+
+
+@app.route("/health")
+def health():
+    return {"status": "ok", "config": CONFIG_PATH, "horizonte_horas": HORIZONTE_HORAS}
+
 
 if __name__ == "__main__":
-    threading.Thread(target=treinar_e_prever, daemon=True).start()  # treino roda em background
+    threading.Thread(target=ciclo, daemon=True).start()
     app.run(host="0.0.0.0", port=8000)

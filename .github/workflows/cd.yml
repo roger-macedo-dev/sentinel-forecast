@@ -45,6 +45,8 @@ jobs:
           sed -i "s|config-checksum: .*|config-checksum: \"$CHECKSUM_GRAFANA\"|" k8s/grafana.yaml
           CHECKSUM_AM=$(sha256sum k8s/alertmanager-configmap.yaml | cut -c1-16)
           sed -i "s|config-checksum: .*|config-checksum: \"$CHECKSUM_AM\"|" k8s/alertmanager.yaml
+          CHECKSUM_SIDECAR=$(sha256sum k8s/sidecar-config-configmap.yaml | cut -c1-16)
+          sed -i "s|config-checksum: .*|config-checksum: \"$CHECKSUM_SIDECAR\"|" k8s/sidecar.yaml
 
       - name: Deploy no cluster
         run: kubectl apply -f k8s/

@@ -1,6 +1,14 @@
 services:
   node_exporter:
     image: prom/node-exporter:v1.8.2
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/host/root'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro
 
   prometheus:
     image: prom/prometheus:v2.55.1
@@ -15,6 +23,8 @@ services:
     build: ./sidecar
     environment:
       - PROMETHEUS_URL=http://prometheus:9090
+    volumes:
+      - ./observability/sidecar/previsoes.yml:/config/previsoes.yml
     ports:
       - "8000:8000"
 

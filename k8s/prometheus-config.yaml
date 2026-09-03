@@ -6,6 +6,7 @@ data:
   prometheus.yml: |
     global:
       scrape_interval: 15s
+
     scrape_configs:
       - job_name: node_exporter
         static_configs:
@@ -19,35 +20,53 @@ data:
       - job_name: remediador
         static_configs:
           - targets: ["remediador:8080"]
+
+    rule_files:
+      - "/etc/prometheus/alert-rules.yml"
+
     alerting:
       alertmanagers:
         - static_configs:
             - targets: ["alertmanager:9093"]
-    rule_files:
-      - "/etc/prometheus/alert-rules.yml"
   alert-rules.yml: |
     groups:
       - name: sentinel-forecast
         rules:
-          - alert: MemoriaPrevisao
-            expr: memoria_previsao_percentual > 70
+          - alert: PrevisaoCapacidade
+            expr: previsao_percentual > 70
             for: 5m
             labels:
               severity: info
             annotations:
-              summary: "Previsao de memoria acima de 70%"
-          - alert: MemoriaPrevisao
-            expr: memoria_previsao_percentual > 85
+              summary: "Previsao de {{ $labels.alvo }} acima de 70%"
+              description: "Tendencia projetada: {{ $value | humanize }}%. Sem acao necessaria ainda, monitorar."
+
+          - alert: PrevisaoCapacidade
+            expr: previsao_percentual > 85
             for: 5m
             labels:
               severity: warning
             annotations:
-              summary: "Previsao de memoria acima de 85%"
-          - alert: MemoriaPrevisao
-            expr: memoria_previsao_percentual > 95
+              summary: "Previsao de {{ $labels.alvo }} acima de 85%"
+              description: "Tendencia projetada: {{ $value | humanize }}%. Avaliar necessidade de escalonar recursos."
+
+          # Critico de memoria carrega o alvo de remediacao; os demais so notificam,
+          # porque nao existe acao automatica definida para eles.
+          - alert: PrevisaoCapacidade
+            expr: previsao_percentual{alvo="memoria"} > 95
             for: 5m
             labels:
               severity: critical
               target: sidecar
             annotations:
-              summary: "Previsao critica de memoria"
+              summary: "Previsao de memoria acima de 95% - risco iminente"
+              description: "Tendencia projetada: {{ $value | humanize }}%. Remediacao automatica sera acionada."
+
+          - alert: PrevisaoCapacidade
+            expr: previsao_percentual{alvo!="memoria"} > 95
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Previsao de {{ $labels.alvo }} acima de 95% - risco iminente"
+              description: "Tendencia projetada: {{ $value | humanize }}%. Acao manual necessaria."

@@ -1,0 +1,29 @@
+apiVersion: v1
+data:
+  previsoes.yml: |
+    # Metricas que o sidecar preve. Adicionar uma previsao nova e acrescentar um
+    # item aqui — nao exige mudanca de codigo.
+    #
+    # nome          -> vira o rotulo 'alvo' na metrica previsao_percentual
+    # query         -> PromQL da serie historica usada para treinar o modelo
+    # multiplicador -> converte o resultado para percentual (use 100 para razoes 0-1)
+
+    previsoes:
+      - nome: memoria
+        query: '1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)'
+        multiplicador: 100
+
+      - nome: cpu
+        query: '1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m]))'
+        multiplicador: 100
+
+      - nome: disco
+        query: '1 - (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"})'
+        multiplicador: 100
+
+      - nome: conexoes_postgres
+        query: 'sum(pg_stat_database_numbackends) / max(pg_settings_max_connections)'
+        multiplicador: 100
+kind: ConfigMap
+metadata:
+  name: sidecar-config

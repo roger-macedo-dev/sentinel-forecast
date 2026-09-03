@@ -3,7 +3,7 @@ global:
 
 route:
   receiver: padrao
-  group_by: ['alertname']
+  group_by: ['alertname', 'alvo']
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 4h
@@ -25,12 +25,12 @@ inhibit_rules:
       - severity = "critical"
     target_matchers:
       - severity = "warning"
-    equal: ['alertname']
+    equal: ['alertname', 'alvo']
   - source_matchers:
       - severity = "warning"
     target_matchers:
       - severity = "info"
-    equal: ['alertname']
+    equal: ['alertname', 'alvo']
 
 receivers:
   - name: padrao

@@ -2,3 +2,5 @@ flask
 prophet
 pandas
 requests
+pyyaml
+prometheus_client
