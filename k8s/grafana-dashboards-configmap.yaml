@@ -480,7 +480,7 @@ data:
           }
         },
         {
-          "type": "bargauge",
+          "type": "barchart",
           "title": "Remediações por serviço",
           "description": "Em quais servicos o remediador precisou atuar.",
           "gridPos": { "h": 6, "w": 9, "x": 6, "y": 31 },
@@ -490,7 +490,13 @@ data:
               "refId": "A",
               "expr": "sum by (alvo) (remediacoes_total)",
               "instant": true,
-              "legendFormat": "{{alvo}}"
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": { "excludeByName": { "Time": true } }
             }
           ],
           "fieldConfig": {
@@ -498,19 +504,21 @@ data:
               "unit": "none",
               "decimals": 0,
               "min": 0,
-              "color": { "mode": "fixed", "fixedColor": "super-light-blue" }
+              "color": { "mode": "fixed", "fixedColor": "super-light-blue" },
+              "custom": { "lineWidth": 0, "fillOpacity": 90 }
             },
             "overrides": []
           },
           "options": {
-            "displayMode": "gradient",
             "orientation": "horizontal",
-            "showUnfilled": true,
-            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+            "xTickLabelRotation": 0,
+            "showValue": "always",
+            "legend": { "showLegend": false },
+            "tooltip": { "mode": "single", "sort": "none" }
           }
         },
         {
-          "type": "bargauge",
+          "type": "barchart",
           "title": "Remediações bloqueadas por motivo",
           "description": "Acoes recusadas pelas protecoes. Volume alto de 'cooldown' sugere alerta em loop; de 'fora_da_allowlist', configuracao divergente entre alerta e remediador.",
           "gridPos": { "h": 6, "w": 9, "x": 15, "y": 31 },
@@ -520,7 +528,13 @@ data:
               "refId": "A",
               "expr": "sum by (motivo) (remediacoes_bloqueadas_total)",
               "instant": true,
-              "legendFormat": "{{motivo}}"
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": { "excludeByName": { "Time": true } }
             }
           ],
           "fieldConfig": {
@@ -528,15 +542,17 @@ data:
               "unit": "none",
               "decimals": 0,
               "min": 0,
-              "color": { "mode": "fixed", "fixedColor": "text" }
+              "color": { "mode": "fixed", "fixedColor": "text" },
+              "custom": { "lineWidth": 0, "fillOpacity": 60 }
             },
             "overrides": []
           },
           "options": {
-            "displayMode": "gradient",
             "orientation": "horizontal",
-            "showUnfilled": true,
-            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+            "xTickLabelRotation": 0,
+            "showValue": "always",
+            "legend": { "showLegend": false },
+            "tooltip": { "mode": "single", "sort": "none" }
           }
         }
       ]

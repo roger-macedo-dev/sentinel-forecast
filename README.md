@@ -83,6 +83,22 @@ schema no Postgres (`cliente_norte`, `cliente_sul`, `cliente_leste`).
 
 ## Deploy no Kubernetes (GKE)
 
+### Bootstrap (uma vez por cluster)
+
+O RBAC do remediador fica em `k8s/rbac/` e é aplicado **manualmente por quem
+administra o cluster**, não pelo pipeline:
+
+```bash
+kubectl apply -f k8s/rbac/remediador-rbac.yaml
+```
+
+A service account do CD tem `roles/container.developer`, que não permite criar
+`Role`/`RoleBinding` — por desenho: um pipeline capaz de conceder permissões pode
+escalar o próprio privilégio. Como `kubectl apply -f k8s/` não é recursivo, o
+subdiretório `rbac/` fica naturalmente fora do alcance do deploy automatizado.
+
+### Deploy da stack
+
 ```bash
 kubectl apply -f k8s/
 ```
@@ -249,8 +265,13 @@ delete`) ao final de cada sessão.
 
 Validado end-to-end em nuvem real (GKE): stack completa no cluster — aplicação
 multi-tenant, banco com volume persistente, coleta de métricas, previsão via
-Prophet, alertas e dashboard provisionado — com CI/CD executado de ponta a ponta
-(build, scan de segurança, publicação das imagens e deploy no cluster).
+Prophet, roteamento de alertas, auto-remediação e dashboard provisionado — com
+CI/CD executado de ponta a ponta (build, scan de segurança, publicação das
+imagens e deploy no cluster).
+
+O ciclo completo foi exercitado no cluster: alerta crítico disparado →
+Alertmanager roteou → webhook → remediador reiniciou o Deployment alvo via API
+do Kubernetes → métrica da ação registrada no dashboard.
 
 Também roda inteira localmente via Docker Compose.
 
