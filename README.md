@@ -144,7 +144,11 @@ Organizado em três seções:
   Memória), cor dinâmica por threshold
 - **Infraestrutura do node** — painéis de tendência (CPU, Memória, Disco, Rede,
   Load average)
-- **Banco de dados** — status do Postgres, conexões ativas e cache hit ratio
+- **Banco de dados (multi-tenant)** — disponibilidade, **saturação de conexões**
+  (percentual de `max_connections`, não o número absoluto — é o teto que importa),
+  cache hit ratio, conexões por estado (expondo `idle in transaction`, que retém
+  locks e trava o autovacuum), taxa de rollback, deadlocks, e **tamanho e dead
+  tuples por schema** — ou seja, por cliente
 - **Remediação automática** — quantas ações foram executadas, em quais serviços, e
   quantas foram bloqueadas por qual proteção
 
