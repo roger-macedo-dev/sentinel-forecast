@@ -264,8 +264,12 @@ importa é desvio sustentado.
 
 Documentadas porque afetam a leitura dos números, não porque sejam ajustáveis:
 
-- **Histórico curto degrada a previsão.** O modelo treina sobre a última hora. Em
-  ambiente recém-provisionado há poucos pontos, e a tendência recente domina.
+- **Histórico curto degrada a previsão.** A janela de treino é configurável
+  (`JANELA_SEGUNDOS`, ou `janela_segundos` por alvo) e o passo da consulta se
+  ajusta proporcionalmente — passo fixo numa janela de dias ultrapassaria o teto
+  de pontos do `query_range` e a consulta falharia. O padrão é uma hora, o que
+  basta para tendência mas não para sazonalidade; em ambiente recém-provisionado
+  há poucos pontos e a tendência recente domina.
   Métricas de aplicação (latência, taxa de erro) sofrem mais que as de
   infraestrutura, por serem bem mais voláteis: em teste com ~30 minutos de dados,
   a latência p95 medida era 0,02s e a previsão ficou em 0,9s.
@@ -481,8 +485,6 @@ Também roda inteira localmente via Docker Compose.
 
 - **Multi-região** — dois clusters GKE em regiões diferentes, replicando a
   separação Global / Região Restrita já descrita em `docs/DESIGN.md`
-- **Janela de treino maior** — treinar sobre dias de histórico, não uma hora, para
-  o modelo capturar sazonalidade (horário e dia da semana) em vez de só tendência
 - **Infraestrutura como código** — provisionar o cluster via Terraform, em vez
   de `gcloud` imperativo
 
