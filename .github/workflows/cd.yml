@@ -47,6 +47,10 @@ jobs:
           sed -i "s|config-checksum: .*|config-checksum: \"$CHECKSUM_AM\"|" k8s/alertmanager.yaml
           CHECKSUM_SIDECAR=$(sha256sum k8s/sidecar-config-configmap.yaml | cut -c1-16)
           sed -i "s|config-checksum: .*|config-checksum: \"$CHECKSUM_SIDECAR\"|" k8s/sidecar.yaml
+          CHECKSUM_LOKI=$(sha256sum k8s/loki-config-configmap.yaml | cut -c1-16)
+          sed -i "s|config-checksum: .*|config-checksum: \"$CHECKSUM_LOKI\"|" k8s/loki.yaml
+          CHECKSUM_ALLOY=$(sha256sum k8s/alloy-config-configmap.yaml | cut -c1-16)
+          sed -i "s|config-checksum: .*|config-checksum: \"$CHECKSUM_ALLOY\"|" k8s/alloy.yaml
 
       - name: Deploy no cluster
         run: kubectl apply -f k8s/

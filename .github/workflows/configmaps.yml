@@ -30,6 +30,12 @@ jobs:
           kubectl create configmap sidecar-config \
             --from-file=observability/sidecar/previsoes.yml \
             --dry-run=client -o yaml > k8s/sidecar-config-configmap.yaml
+          kubectl create configmap loki-config \
+            --from-file=observability/loki/loki.yml \
+            --dry-run=client -o yaml > k8s/loki-config-configmap.yaml
+          kubectl create configmap alloy-config \
+            --from-file=config.alloy=observability/alloy/config-k8s.alloy \
+            --dry-run=client -o yaml > k8s/alloy-config-configmap.yaml
           kubectl create configmap postgres-init \
             --from-file=postgres-init/init.sql \
             --dry-run=client -o yaml > k8s/postgres-init-configmap.yaml

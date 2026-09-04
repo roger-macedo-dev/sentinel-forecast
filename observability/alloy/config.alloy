@@ -1,0 +1,32 @@
+// Coleta de logs dos containers locais (Docker Compose).
+// No Kubernetes a descoberta e outra: usa a API do cluster com RBAC restrito,
+// sem precisar de acesso ao socket do runtime.
+
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+// O nome do container vem como "/sentinel-forecast-remediador-1". Extrai um
+// rotulo limpo para poder filtrar por servico no Grafana.
+discovery.relabel "containers" {
+  targets = discovery.docker.containers.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "servico"
+  }
+}
+
+loki.source.docker "containers" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.containers.output
+  labels     = {ambiente = "local"}
+  forward_to = [loki.write.padrao.receiver]
+}
+
+loki.write "padrao" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

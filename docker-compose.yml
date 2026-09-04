@@ -74,5 +74,30 @@ services:
     ports:
       - "8080:8080"
 
+  loki:
+    image: grafana/loki:3.3.2
+    command: -config.file=/etc/loki/loki.yml
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./observability/loki/loki.yml:/etc/loki/loki.yml
+      - loki-data:/loki
+
+  alloy:
+    image: grafana/alloy:v1.5.1
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./observability/alloy/config.alloy:/etc/alloy/config.alloy
+      # Acesso ao socket do Docker: necessario para descobrir containers e ler
+      # seus logs. Concede controle do Docker do host ao container — aceitavel
+      # em ambiente local, jamais em producao sem isolamento adicional.
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - loki
+
 volumes:
   prometheus-data:
+  loki-data:

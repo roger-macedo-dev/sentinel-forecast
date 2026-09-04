@@ -11,6 +11,13 @@ data:
         isDefault: true
         uid: prometheus
         editable: false
+
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://loki:3100
+        uid: loki
+        editable: false
 kind: ConfigMap
 metadata:
   name: grafana-datasources

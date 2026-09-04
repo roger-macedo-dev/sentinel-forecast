@@ -1331,6 +1331,34 @@ data:
               "sort": "none"
             }
           }
+        },
+        {
+          "type": "logs",
+          "title": "Auditoria de remediação",
+          "description": "Uma linha por decisao do remediador: alvo, acao, severidade, alerta de origem e resultado.",
+          "gridPos": {
+            "h": 9,
+            "w": 24,
+            "x": 0,
+            "y": 51
+          },
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "{servico=~\".*remediador.*\"} |= \"decisao\"",
+              "queryType": "range"
+            }
+          ],
+          "options": {
+            "showTime": true,
+            "wrapLogMessage": true,
+            "sortOrder": "Descending",
+            "enableLogDetails": true
+          }
         }
       ]
     }

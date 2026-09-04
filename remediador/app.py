@@ -226,7 +226,24 @@ def processar(alerta):
 @app.route("/webhook", methods=["POST"])
 def webhook():
     payload = request.get_json(silent=True) or {}
-    resultados = [processar(alerta) for alerta in payload.get("alerts", [])]
+
+    resultados = []
+    for alerta in payload.get("alerts", []):
+        resultado = processar(alerta)
+        rotulos = alerta.get("labels", {})
+        # Uma linha estruturada por decisao, em chave=valor: o LogQL interpreta
+        # com o parser logfmt, permitindo filtrar e agregar por campo em vez de
+        # depender da redacao da mensagem.
+        log.info(
+            'decisao alvo=%s acao=%s severidade=%s alerta=%s resultado="%s"',
+            rotulos.get("target", "-"),
+            rotulos.get("acao", "reiniciar"),
+            rotulos.get("severity", "-"),
+            rotulos.get("alertname", "-"),
+            resultado,
+        )
+        resultados.append(resultado)
+
     return jsonify({"resultados": resultados}), 200
 
 
