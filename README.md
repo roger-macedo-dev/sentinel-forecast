@@ -200,10 +200,23 @@ previsoes:
     multiplicador: 100
 ```
 
-Hoje são quatro: memória, CPU, disco e saturação de conexões do Postgres. Todas
-saem como `previsao_percentual{alvo="..."}` — uma métrica com rótulo, não uma
-métrica por recurso: assim uma única regra de alerta cobre todos os alvos, e a
-métrica permanece agregável.
+Hoje são seis, entre infraestrutura e aplicação:
+
+| Alvo | Origem | Métrica exposta |
+|---|---|---|
+| memória, CPU, disco | node_exporter | `previsao_percentual{alvo}` |
+| saturação de conexões | postgres_exporter | `previsao_percentual{alvo}` |
+| taxa de erro da API | aplicação | `previsao_percentual{alvo}` |
+| latência p95 da API | aplicação | `previsao_segundos{alvo}` |
+
+Uma métrica com rótulo, não uma métrica por recurso: assim uma única regra de
+alerta cobre todos os alvos e o resultado permanece agregável. Latência sai numa
+métrica separada porque a unidade é outra — misturar segundos e percentual sob o
+mesmo nome inviabilizaria qualquer agregação.
+
+A API é instrumentada com `prometheus_client`, usando o **template** da rota
+(`/envios/<cliente>`) como rótulo, nunca o caminho concreto — o caminho criaria
+uma série por cliente e a cardinalidade cresceria sem limite.
 
 ### Por que crescimento logístico
 
@@ -218,6 +231,22 @@ porque o intervalo de confiança pode escapar um pouco dos limites.
 
 Efeito colateral conhecido: com tendência de queda numa máquina ociosa, a
 previsão satura no piso (0%) em vez de estabilizar num patamar realista.
+
+### Limitações conhecidas
+
+Documentadas porque afetam a leitura dos números, não porque sejam ajustáveis:
+
+- **Histórico curto degrada a previsão.** O modelo treina sobre a última hora. Em
+  ambiente recém-provisionado há poucos pontos, e a tendência recente domina.
+  Métricas de aplicação (latência, taxa de erro) sofrem mais que as de
+  infraestrutura, por serem bem mais voláteis: em teste com ~30 minutos de dados,
+  a latência p95 medida era 0,02s e a previsão ficou em 0,9s.
+- **Prophet foi desenhado para séries longas**, com sazonalidade diária e semanal.
+  Com uma hora de histórico ele só tem tendência para extrapolar — daí a
+  flexibilidade de tendência reduzida (`changepoint_prior_scale` baixo), ajustável
+  por alvo.
+- **Consumo de CPU cresce com o número de alvos.** Cada previsão treina um modelo
+  próprio; por isso o intervalo padrão de retreino é de 5 minutos, não 1.
 
 Falha ao prever um alvo não interrompe os demais, e `previsao_falhas{alvo}`
 sinaliza quando um modelo para de treinar — sem isso, a métrica ficaria congelada
@@ -311,6 +340,11 @@ GKE ser efêmero por design:
 
 Em PR o pipeline builda e escaneia mas **não publica** — só push em `main` publica.
 
+**ConfigMaps (`configmaps.yml`) — automático**: os arquivos em `k8s/*-configmap.yaml`
+são gerados a partir das fontes em `observability/`. O pipeline regenera e falha se
+estiverem fora de sincronia, transformando em erro visível o que antes era divergência
+silenciosa entre o que está versionado e o que vai para o cluster.
+
 **CD (`cd.yml`) — manual** (`workflow_dispatch`, com a tag da imagem como input):
 autentica no GCP por service account dedicada (`roles/container.developer`,
 menor privilégio), obtém credenciais do cluster, injeta a tag escolhida no
@@ -365,8 +399,8 @@ Também roda inteira localmente via Docker Compose.
   separação Global / Região Restrita já descrita em `docs/DESIGN.md`
 - **Detecção de anomalia real** — comparar com baseline por horário/dia da semana,
   em vez de extrapolação de tendência contra limiar fixo
-- **Previsão de métricas de aplicação** — latência e taxa de erro da API, além das
-  métricas de infraestrutura
+- **Janela de treino maior** — treinar sobre dias de histórico, não uma hora, para
+  o modelo capturar sazonalidade em vez de só tendência
 - **Mais ações de remediação** — hoje só `rollout restart`; adicionar limpeza de
   disco e escalonamento de réplicas como ações possíveis
 - **Streaming (Kafka)** — desacoplar API→banco via eventos (mesmo padrão do
