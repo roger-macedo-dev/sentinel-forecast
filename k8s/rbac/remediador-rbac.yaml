@@ -8,9 +8,18 @@ kind: Role
 metadata:
   name: remediador
 rules:
+  # reiniciar e escalar Deployments
   - apiGroups: ["apps"]
     resources: ["deployments"]
     verbs: ["get", "patch"]
+  # verificar se o alvo e gerenciado por HPA antes de escalar
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["list"]
+  # limpar Pods em falha
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["list", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
