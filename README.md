@@ -1,4 +1,4 @@
-# Sentinel Forecast
+i# Sentinel Forecast
 
 [![CI](https://github.com/roger-macedo-dev/sentinel-forecast/actions/workflows/ci.yml/badge.svg)](https://github.com/roger-macedo-dev/sentinel-forecast/actions/workflows/ci.yml)
 [![CD](https://github.com/roger-macedo-dev/sentinel-forecast/actions/workflows/cd.yml/badge.svg)](https://github.com/roger-macedo-dev/sentinel-forecast/actions/workflows/cd.yml)
@@ -325,7 +325,7 @@ guardas, e todas emitem métrica quando bloqueiam:
 
 | Proteção | O que evita |
 |---|---|
-| **Allowlist** | Tocar um serviço que não deveria ser tocado, mesmo que o alerta peça |
+| **Allowlist por alvo *e* ação** | Executar num serviço uma ação que não faz sentido para ele, mesmo que o alerta peça |
 | **Cooldown** (10 min por alvo) | Loop de ações quando o alerta persiste depois da remediação |
 | **Revalidação de severidade** | Agir por engano se o roteamento do Alertmanager for alterado no futuro |
 | **Ação desconhecida é recusada** | Erro de digitação no rótulo virar "nada aconteceu" silencioso |
@@ -340,6 +340,13 @@ A ação vem do rótulo `acao` do alerta (padrão: `reiniciar`):
 | `reiniciar` | `rollout restart` do Deployment |
 | `escalar` | Adiciona uma réplica, até um teto configurável |
 | `limpar_pods_falhos` | Remove Pods em estado `Failed` (inclui os despejados por falta de recurso) |
+
+A permissão é declarada por par alvo/ação
+(`sidecar:reiniciar|limpar_pods_falhos,api:reiniciar|escalar`), não apenas por
+alvo. A distinção veio de um teste real: escalar o `sidecar` **funcionava**, mas
+duas réplicas treinariam os mesmos modelos e publicariam previsões divergentes
+para a mesma métrica. Ação tecnicamente bem-sucedida e semanticamente errada é
+pior que ação bloqueada.
 
 Além disso, `DRY_RUN` controla se a ação é executada ou apenas registrada — no
 Docker Compose local roda em dry-run (não há cluster para agir), no Kubernetes
