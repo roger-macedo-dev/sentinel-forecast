@@ -6,6 +6,12 @@ on:
       image_tag:
         description: 'Tag da imagem a implantar (SHA do commit, ver no GHCR)'
         required: true
+      cluster:
+        description: 'Cluster de destino. Vazio = primario (definido nos secrets).'
+        required: false
+      zona:
+        description: 'Zona do cluster de destino. Vazio = primario.'
+        required: false
 
 jobs:
   deploy:
@@ -27,8 +33,9 @@ jobs:
       - name: Obter credenciais do cluster
         uses: google-github-actions/get-gke-credentials@v3
         with:
-          cluster_name: ${{ secrets.GKE_CLUSTER }}
-          location: ${{ secrets.GKE_ZONE }}
+          # Sem valor no input, cai no cluster primario definido nos secrets.
+          cluster_name: ${{ inputs.cluster || secrets.GKE_CLUSTER }}
+          location: ${{ inputs.zona || secrets.GKE_ZONE }}
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
       - name: Atualizar tags das imagens
