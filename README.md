@@ -84,6 +84,34 @@ schema no Postgres (`cliente_norte`, `cliente_sul`, `cliente_leste`).
 
 ## Deploy no Kubernetes (GKE)
 
+### Provisionamento (Terraform)
+
+O cluster é declarado em `terraform/`, num módulo reutilizável — o mesmo código
+gera o cluster primário e o secundário, mudando apenas as variáveis:
+
+```bash
+cd terraform
+terraform init
+terraform apply
+```
+
+O segundo cluster fica atrás de um interruptor, para não pagar por ele fora dos
+testes de multi-região:
+
+```bash
+terraform apply -var="criar_secundario=true"
+```
+
+O estado (`*.tfstate`) não é versionado: carrega certificados do cluster em
+texto claro. O `.terraform.lock.hcl`, sim — ele fixa a versão do provider e é o
+que garante que o mesmo código produza a mesma infraestrutura.
+
+Autenticação é via Application Default Credentials, distintas do login do CLI:
+
+```bash
+gcloud auth application-default login
+```
+
 ### Bootstrap (uma vez por cluster)
 
 Os arquivos de RBAC ficam em `k8s/rbac/` e são aplicados **manualmente por quem
@@ -454,18 +482,19 @@ Reduz superfície de ataque de verdade, em vez de suprimir o alerta.
 ## Custo e disciplina de uso
 
 Cluster GKE não fica ativo permanentemente — control plane é isento (1 cluster
-por conta de billing), mas nodes cobram por hora.
+por conta de billing), mas nodes cobram por hora. A isenção cobre apenas um
+cluster: no teste de multi-região o segundo cobra control plane também, motivo
+pelo qual ele fica atrás de um interruptor no Terraform.
 
 ```bash
-gcloud container clusters create sentinel-forecast-cluster \
-  --zone us-central1-a \
-  --num-nodes 1 --machine-type e2-medium --disk-size 30 \
-  --enable-autoscaling --min-nodes 1 --max-nodes 3
+cd terraform
+terraform apply
 ```
 
-Ao final de cada sessão, `gcloud container clusters delete`. **Deletar o cluster
-não remove os discos dos PVCs** — é preciso conferir `gcloud compute disks list`
-e apagá-los, senão continuam sendo cobrados.
+Ao final de cada sessão, `terraform destroy`. **Destruir o cluster não remove os
+discos dos PVCs** — eles foram criados pelo Kubernetes, não pelo Terraform, e
+portanto não estão no estado. É preciso conferir `gcloud compute disks list` e
+apagá-los à mão, senão continuam sendo cobrados.
 
 ## Status
 
@@ -479,12 +508,16 @@ O ciclo completo foi exercitado no cluster: alerta crítico disparado →
 Alertmanager roteou → webhook → remediador reiniciou o Deployment alvo via API
 do Kubernetes → métrica da ação registrada no dashboard.
 
+A mesma stack foi implantada em dois clusters em regiões diferentes
+(`us-central1` e `southamerica-east1`) a partir do mesmo commit e do mesmo
+pipeline, com o cluster de destino passado como parâmetro do deploy.
+
 Também roda inteira localmente via Docker Compose.
 
 ## Roadmap
 
-- **Multi-região** — dois clusters GKE em regiões diferentes, replicando a
-  separação Global / Região Restrita já descrita em `docs/DESIGN.md`
-- **Infraestrutura como código** — provisionar o cluster via Terraform, em vez
-  de `gcloud` imperativo
+- **Dependências Python fixadas** — hoje as versões não são fixadas, o único
+  ponto onde o mesmo commit pode não produzir o mesmo resultado
+- **Estado remoto do Terraform** — bucket GCS com versionamento, no lugar do
+  estado local, para permitir mais de um operador
 
