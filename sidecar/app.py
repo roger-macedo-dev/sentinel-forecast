@@ -35,6 +35,26 @@ previsao_segundos = Gauge(
     "Previsao de duracao no horizonte configurado, em segundos",
     ["alvo"],
 )
+anomalia = Gauge(
+    "anomalia_detectada",
+    "1 quando o valor atual esta fora do intervalo esperado pelo modelo",
+    ["alvo"],
+)
+valor_observado = Gauge(
+    "valor_observado",
+    "Ultimo valor real da metrica monitorada",
+    ["alvo"],
+)
+limite_inferior = Gauge(
+    "limite_inferior_esperado",
+    "Piso do intervalo de confianca do modelo para o momento atual",
+    ["alvo"],
+)
+limite_superior = Gauge(
+    "limite_superior_esperado",
+    "Teto do intervalo de confianca do modelo para o momento atual",
+    ["alvo"],
+)
 falhas = Gauge(
     "previsao_falhas",
     "1 se a ultima tentativa de previsao do alvo falhou, 0 se teve sucesso",
@@ -70,6 +90,10 @@ def buscar_historico(query, janela_segundos=3600, passo="30s"):
     df = pd.DataFrame(valores, columns=["ds", "y"])
     df["ds"] = pd.to_datetime(df["ds"], unit="s")
     df["y"] = df["y"].astype(float)
+    # NaN aparece quando a query nao tem dado no instante (ex: histogram_quantile
+    # sem trafego). Manter NaN e perigoso: comparacao com NaN e sempre falsa,
+    # entao a anomalia ficaria zerada sem ninguem perceber.
+    df = df.dropna()
     return df
 
 
@@ -98,6 +122,9 @@ def prever(alvo):
     modelo = Prophet(
         growth="logistic",
         changepoint_prior_scale=float(alvo.get("flexibilidade", 0.01)),
+        # Intervalo mais largo que o padrao (0.80). Metrica estavel tem variancia
+        # minima, e um intervalo apertado transforma ruido normal em anomalia.
+        interval_width=float(alvo.get("confianca", 0.99)),
     )
     modelo.fit(df)
 
@@ -111,7 +138,27 @@ def prever(alvo):
     # Rede de seguranca: o intervalo de confianca do modelo ainda pode escapar
     # um pouco dos limites mesmo com crescimento logistico.
     previsto = min(max(previsto, 0.0), teto)
-    return previsto * alvo.get("multiplicador", 1)
+
+    # A ultima linha e a projecao futura; a penultima corresponde ao instante
+    # mais recente ja observado. Comparar o valor real com o intervalo previsto
+    # para esse instante e o que caracteriza anomalia: nao um limiar fixo, e sim
+    # desvio em relacao ao que o modelo esperava dado o padrao historico.
+    esperado_agora = resultado.iloc[-2]
+    multiplicador = alvo.get("multiplicador", 1)
+
+    # Margem absoluta minima, proporcional ao teto da metrica. Sem ela, uma serie
+    # praticamente constante gera faixa quase nula e acusa anomalia a cada
+    # variacao irrelevante.
+    margem = float(alvo.get("margem", 0.02)) * teto
+    inferior_bruto = float(esperado_agora["yhat_lower"]) - margem
+    superior_bruto = float(esperado_agora["yhat_upper"]) + margem
+
+    return {
+        "previsto": previsto * multiplicador,
+        "observado": float(df["y"].iloc[-1]) * multiplicador,
+        "inferior": min(max(inferior_bruto, 0.0), teto) * multiplicador,
+        "superior": min(max(superior_bruto, 0.0), teto) * multiplicador,
+    }
 
 
 def ciclo():
@@ -122,7 +169,7 @@ def ciclo():
         for alvo in alvos:
             nome = alvo["nome"]
             try:
-                valor = prever(alvo)
+                resultado = prever(alvo)
             except Exception as erro:
                 # Falha em um alvo nao pode derrubar a previsao dos demais.
                 falhas.labels(alvo=nome).set(1)
@@ -130,16 +177,34 @@ def ciclo():
                 continue
 
             falhas.labels(alvo=nome).set(0)
-            if valor is None:
+            if resultado is None:
                 log.info("Sem historico suficiente para prever '%s'", nome)
                 continue
 
+            valor = resultado["previsto"]
             if alvo.get("unidade", "percentual") == "segundos":
                 previsao_segundos.labels(alvo=nome).set(valor)
                 log.info("Previsao de '%s': %.3fs", nome, valor)
             else:
                 previsao.labels(alvo=nome).set(valor)
                 log.info("Previsao de '%s': %.2f%%", nome, valor)
+
+            observado = resultado["observado"]
+            inferior = resultado["inferior"]
+            superior = resultado["superior"]
+
+            valor_observado.labels(alvo=nome).set(observado)
+            limite_inferior.labels(alvo=nome).set(inferior)
+            limite_superior.labels(alvo=nome).set(superior)
+
+            fora_do_esperado = observado < inferior or observado > superior
+            anomalia.labels(alvo=nome).set(1 if fora_do_esperado else 0)
+
+            if fora_do_esperado:
+                log.warning(
+                    "Anomalia em '%s': valor %.4f fora do intervalo esperado [%.4f, %.4f]",
+                    nome, observado, inferior, superior,
+                )
 
         time.sleep(INTERVALO_SEGUNDOS)
 

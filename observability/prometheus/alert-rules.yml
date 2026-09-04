@@ -39,3 +39,14 @@ groups:
         annotations:
           summary: "Previsao de {{ $labels.alvo }} acima de 95% - risco iminente"
           description: "Tendencia projetada: {{ $value | humanize }}%. Acao manual necessaria."
+
+      # Anomalia nao usa limiar fixo: dispara quando o valor real sai do intervalo
+      # que o modelo esperava para o momento, seja para cima ou para baixo.
+      - alert: ComportamentoAnomalo
+        expr: anomalia_detectada == 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Comportamento anomalo em {{ $labels.alvo }}"
+          description: "Valor fora do intervalo esperado pelo modelo por mais de 10 minutos."
