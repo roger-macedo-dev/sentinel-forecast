@@ -1,4 +1,4 @@
-i# Sentinel Forecast
+# Sentinel Forecast
 
 [![CI](https://github.com/roger-macedo-dev/sentinel-forecast/actions/workflows/ci.yml/badge.svg)](https://github.com/roger-macedo-dev/sentinel-forecast/actions/workflows/ci.yml)
 [![CD](https://github.com/roger-macedo-dev/sentinel-forecast/actions/workflows/cd.yml/badge.svg)](https://github.com/roger-macedo-dev/sentinel-forecast/actions/workflows/cd.yml)
