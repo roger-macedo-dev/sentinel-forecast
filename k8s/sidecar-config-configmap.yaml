@@ -24,6 +24,19 @@ data:
       - nome: conexoes_postgres
         query: 'sum(pg_stat_database_numbackends) / max(pg_settings_max_connections)'
         multiplicador: 100
+
+      # Metricas de aplicacao (nao de infraestrutura)
+      - nome: taxa_erro_api
+        query: 'sum(rate(http_requisicoes_total{status=~"5.."}[5m])) / clamp_min(sum(rate(http_requisicoes_total[5m])), 0.0001)'
+        multiplicador: 100
+
+      # Latencia nao e percentual: sai como previsao_segundos.
+      # O teto de 5s e o limite considerado inaceitavel para esta API — serve de
+      # limite superior para o modelo logistico.
+      - nome: latencia_p95_api
+        query: 'histogram_quantile(0.95, sum by (le) (rate(http_duracao_segundos_bucket[5m])))'
+        unidade: segundos
+        teto: 5
 kind: ConfigMap
 metadata:
   name: sidecar-config

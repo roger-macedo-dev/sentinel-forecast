@@ -20,6 +20,9 @@ data:
       - job_name: remediador
         static_configs:
           - targets: ["remediador:8080"]
+      - job_name: api
+        static_configs:
+          - targets: ["api:5000"]
 
     rule_files:
       - "/etc/prometheus/alert-rules.yml"

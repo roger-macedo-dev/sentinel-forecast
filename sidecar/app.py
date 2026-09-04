@@ -30,6 +30,11 @@ previsao = Gauge(
     "Previsao de uso do recurso no horizonte configurado, em percentual",
     ["alvo"],
 )
+previsao_segundos = Gauge(
+    "previsao_segundos",
+    "Previsao de duracao no horizonte configurado, em segundos",
+    ["alvo"],
+)
 falhas = Gauge(
     "previsao_falhas",
     "1 se a ultima tentativa de previsao do alvo falhou, 0 se teve sucesso",
@@ -124,8 +129,12 @@ def ciclo():
                 log.info("Sem historico suficiente para prever '%s'", nome)
                 continue
 
-            previsao.labels(alvo=nome).set(valor)
-            log.info("Previsao de '%s': %.2f%%", nome, valor)
+            if alvo.get("unidade", "percentual") == "segundos":
+                previsao_segundos.labels(alvo=nome).set(valor)
+                log.info("Previsao de '%s': %.3fs", nome, valor)
+            else:
+                previsao.labels(alvo=nome).set(valor)
+                log.info("Previsao de '%s': %.2f%%", nome, valor)
 
         time.sleep(INTERVALO_SEGUNDOS)
 

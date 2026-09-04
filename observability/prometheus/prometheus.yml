@@ -14,6 +14,9 @@ scrape_configs:
   - job_name: remediador
     static_configs:
       - targets: ["remediador:8080"]
+  - job_name: api
+    static_configs:
+      - targets: ["api:5000"]
 
 rule_files:
   - "alert-rules.yml"
