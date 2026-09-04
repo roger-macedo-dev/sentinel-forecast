@@ -93,7 +93,12 @@ def prever(alvo):
     df["cap"] = teto
     df["floor"] = 0.0
 
-    modelo = Prophet(growth="logistic")
+    # changepoint_prior_scale menor = tendencia menos flexivel. O padrao (0.05)
+    # persegue picos recentes e, com historico curto, extrapola demais.
+    modelo = Prophet(
+        growth="logistic",
+        changepoint_prior_scale=float(alvo.get("flexibilidade", 0.01)),
+    )
     modelo.fit(df)
 
     futuro = modelo.make_future_dataframe(periods=HORIZONTE_HORAS, freq="1h")

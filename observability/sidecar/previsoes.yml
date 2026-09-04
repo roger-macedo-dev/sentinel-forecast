@@ -24,7 +24,7 @@ previsoes:
 
   # Metricas de aplicacao (nao de infraestrutura)
   - nome: taxa_erro_api
-    query: 'sum(rate(http_requisicoes_total{status=~"5.."}[5m])) / clamp_min(sum(rate(http_requisicoes_total[5m])), 0.0001)'
+    query: '(sum(rate(http_requisicoes_total{status=~"5.."}[5m])) or vector(0)) / clamp_min(sum(rate(http_requisicoes_total[5m])), 0.0001)'
     multiplicador: 100
 
   # Latencia nao e percentual: sai como previsao_segundos.
