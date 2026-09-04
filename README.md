@@ -50,6 +50,7 @@ api (multi-tenant) -> postgres (dashboards)   (previsão computada)
 | Banco de dados | PostgreSQL 16, multi-tenant (schema por cliente) |
 | Forecasting | Python, Flask, Prophet, pandas |
 | Observabilidade | Prometheus, Alertmanager, Grafana, node_exporter, postgres_exporter |
+| Logs | Loki, Grafana Alloy |
 | Orquestração | Kubernetes (testado em GKE) |
 | IaC / Deploy | Docker Compose (local), manifests Kubernetes (`k8s/`) |
 | Cloud | Google Cloud Platform |
@@ -85,11 +86,11 @@ schema no Postgres (`cliente_norte`, `cliente_sul`, `cliente_leste`).
 
 ### Bootstrap (uma vez por cluster)
 
-O RBAC do remediador fica em `k8s/rbac/` e é aplicado **manualmente por quem
+Os arquivos de RBAC ficam em `k8s/rbac/` e são aplicados **manualmente por quem
 administra o cluster**, não pelo pipeline:
 
 ```bash
-kubectl apply -f k8s/rbac/remediador-rbac.yaml
+kubectl apply -f k8s/rbac/
 ```
 
 A service account do CD tem `roles/container.developer`, que não permite criar
@@ -113,7 +114,9 @@ A stack inteira roda no cluster:
 | `grafana` | Deployment com PVC, datasource e dashboard provisionados via código |
 | `postgres` | Deployment + PVC, `PGDATA` em subdiretório (disco novo vem com `lost+found`, e o Postgres recusa diretório não-vazio) |
 | `alertmanager` | Deployment + ConfigMap, roteamento e inibição por severidade |
-| `remediador` | Deployment + ServiceAccount/Role/RoleBinding com permissão mínima (`get`/`patch` em `deployments`) |
+| `remediador` | Deployment + ServiceAccount/Role/RoleBinding com permissão mínima por ação |
+| `loki` | Deployment + PVC, retenção de 7 dias |
+| `alloy` | Deployment, coleta logs pela API do cluster (`ClusterRole` somente leitura) |
 | `postgres-exporter` | Deployment, credenciais lidas do Secret |
 | `api` | Deployment com `resources` declarados + `HorizontalPodAutoscaler` (1–4 réplicas), credenciais do banco lidas do Secret |
 
@@ -180,8 +183,9 @@ Organizado em três seções:
   cache hit ratio, conexões por estado (expondo `idle in transaction`, que retém
   locks e trava o autovacuum), taxa de rollback, deadlocks, e **tamanho e dead
   tuples por schema** — ou seja, por cliente
-- **Remediação automática** — quantas ações foram executadas, em quais serviços, e
-  quantas foram bloqueadas por qual proteção
+- **Remediação automática** — quantas ações foram executadas, em quais serviços,
+  quantas foram bloqueadas por qual proteção, e o registro auditável de cada
+  decisão tomada
 
 Critério de formatação: threshold de status só onde existe um teto físico real
 (CPU/Memória/Disco em %, cache hit ratio). Rede fica sem threshold, por não ter
@@ -367,6 +371,35 @@ Não pode criar recursos, ler Secrets nem alcançar outros namespaces. Se o serv
 for comprometido, o alcance máximo é o dessas três operações no próprio namespace
 — e a allowlist restringe ainda mais.
 
+### Auditoria das decisões
+
+Métrica responde *quantas* remediações houve; não responde *por que o serviço foi
+reiniciado às 3h da manhã*. Como o remediador age sozinho, essa pergunta precisa
+de resposta — e, sem agregação de logs, ela existia apenas no `stdout` do Pod,
+desaparecendo junto com ele.
+
+Cada decisão gera **uma linha estruturada** em formato `chave=valor`:
+
+```
+decisao alvo=sidecar acao=escalar severidade=critical alerta=PrevisaoCapacidade
+        resultado="recusado: acao 'escalar' nao permitida em 'sidecar'"
+```
+
+O formato não é estético: o LogQL interpreta `chave=valor` nativamente, então a
+consulta filtra **por campo** (`| logfmt | alvo="sidecar"`) em vez de depender da
+redação da mensagem. A primeira versão usava texto livre, e um filtro por
+`"recusado"` deixava escapar as recusas cuja mensagem dizia "não permitida".
+
+Os logs são coletados pelo **Alloy** e armazenados no **Loki**, com datasource
+provisionado como código e um painel de auditoria no mesmo dashboard das
+métricas — permitindo correlacionar um pico de uso com a decisão tomada no mesmo
+instante.
+
+Diferença entre os ambientes: no Docker Compose o coletor descobre containers via
+socket do Docker (o que concede controle do Docker do host ao container —
+aceitável localmente, não em produção); no Kubernetes ele lê pela API do cluster,
+com um `ClusterRole` **somente leitura**, restrito a `pods` e `pods/log`.
+
 ### Observabilidade da própria remediação
 
 `remediacoes_total{alvo,resultado}` e `remediacoes_bloqueadas_total{motivo}` são
@@ -452,3 +485,4 @@ Também roda inteira localmente via Docker Compose.
   o modelo capturar sazonalidade (horário e dia da semana) em vez de só tendência
 - **Infraestrutura como código** — provisionar o cluster via Terraform, em vez
   de `gcloud` imperativo
+
