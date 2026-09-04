@@ -232,6 +232,30 @@ porque o intervalo de confiança pode escapar um pouco dos limites.
 Efeito colateral conhecido: com tendência de queda numa máquina ociosa, a
 previsão satura no piso (0%) em vez de estabilizar num patamar realista.
 
+### Detecção de anomalia
+
+Além de prever, o sidecar avalia se o valor **atual** está dentro do que o modelo
+esperava para este instante. Anomalia é desvio do padrão aprendido — para cima ou
+para baixo —, não um limiar fixo: uma queda abrupta de tráfego é tão anômala
+quanto um pico, e nenhum limiar de "acima de X%" detectaria a primeira.
+
+Métricas expostas: `anomalia_detectada{alvo}` (0/1), com `valor_observado`,
+`limite_inferior_esperado` e `limite_superior_esperado` para tornar a decisão
+auditável — sem elas, o alerta seria um "1" sem explicação.
+
+**Falso positivo em métrica estável, e a correção.** A primeira versão acusava
+anomalia em série saudável. Motivo: quando a variância é mínima, o intervalo de
+confiança fica estreitíssimo — o uso de disco, por exemplo, gerava a faixa
+`[35,145; 35,202]`, e qualquer flutuação irrelevante escapava dela. Detector que
+dispara em sistema saudável é pior que nenhum, porque ensina a equipe a ignorar
+alerta.
+
+Duas correções, ambas configuráveis por alvo: intervalo de confiança mais largo
+(99% em vez dos 80% padrão) e uma **margem absoluta mínima** proporcional ao teto
+da métrica. Verificado com série sintética: série estável não acusa, série com
+pico acusa. O alerta ainda exige `for: 10m` — anomalia pontual é ruído, o que
+importa é desvio sustentado.
+
 ### Limitações conhecidas
 
 Documentadas porque afetam a leitura dos números, não porque sejam ajustáveis:
@@ -264,6 +288,7 @@ Alertmanager tratá-las como o mesmo problema em gravidades diferentes:
 | `PrevisaoCapacidade` | previsão > 70% | info |
 | `PrevisaoCapacidade` | previsão > 85% | warning |
 | `PrevisaoCapacidade` | previsão > 95% | critical |
+| `ComportamentoAnomalo` | valor fora do intervalo esperado por 10 min | warning |
 
 As regras são escritas sobre `previsao_percentual` sem filtrar o alvo, então
 valem automaticamente para qualquer métrica adicionada ao arquivo de previsões.
@@ -300,9 +325,21 @@ guardas, e todas emitem métrica quando bloqueiam:
 
 | Proteção | O que evita |
 |---|---|
-| **Allowlist** | Reiniciar um serviço que não deveria ser tocado, mesmo que o alerta peça |
-| **Cooldown** (10 min por alvo) | Loop de restart quando o alerta persiste depois da ação |
+| **Allowlist** | Tocar um serviço que não deveria ser tocado, mesmo que o alerta peça |
+| **Cooldown** (10 min por alvo) | Loop de ações quando o alerta persiste depois da remediação |
 | **Revalidação de severidade** | Agir por engano se o roteamento do Alertmanager for alterado no futuro |
+| **Ação desconhecida é recusada** | Erro de digitação no rótulo virar "nada aconteceu" silencioso |
+| **Recusa de conflito com HPA** | Escalonar um alvo cujo número de réplicas é controlado por autoscaler — a mudança seria sobrescrita, e a ação registrada como sucesso sem efeito |
+
+### Ações disponíveis
+
+A ação vem do rótulo `acao` do alerta (padrão: `reiniciar`):
+
+| Ação | O que faz |
+|---|---|
+| `reiniciar` | `rollout restart` do Deployment |
+| `escalar` | Adiciona uma réplica, até um teto configurável |
+| `limpar_pods_falhos` | Remove Pods em estado `Failed` (inclui os despejados por falta de recurso) |
 
 Além disso, `DRY_RUN` controla se a ação é executada ou apenas registrada — no
 Docker Compose local roda em dry-run (não há cluster para agir), no Kubernetes
@@ -311,10 +348,17 @@ executa de fato.
 ### Permissões no cluster
 
 O remediador usa uma `ServiceAccount` dedicada com um `Role` de escopo de
-namespace concedendo apenas `get` e `patch` sobre `deployments`. Não pode criar,
-excluir, ler Secrets nem alcançar outros namespaces: se o serviço for
-comprometido, o alcance máximo é reiniciar Deployments do próprio namespace — e a
-allowlist restringe ainda mais.
+namespace, com permissões nominais para exatamente o que cada ação exige:
+
+| Recurso | Verbos | Para quê |
+|---|---|---|
+| `deployments` (apps) | `get`, `patch` | reiniciar e escalar |
+| `horizontalpodautoscalers` (autoscaling) | `list` | detectar conflito antes de escalar |
+| `pods` | `list`, `delete` | limpar Pods em falha |
+
+Não pode criar recursos, ler Secrets nem alcançar outros namespaces. Se o serviço
+for comprometido, o alcance máximo é o dessas três operações no próprio namespace
+— e a allowlist restringe ainda mais.
 
 ### Observabilidade da própria remediação
 
@@ -397,12 +441,8 @@ Também roda inteira localmente via Docker Compose.
 
 - **Multi-região** — dois clusters GKE em regiões diferentes, replicando a
   separação Global / Região Restrita já descrita em `docs/DESIGN.md`
-- **Detecção de anomalia real** — comparar com baseline por horário/dia da semana,
-  em vez de extrapolação de tendência contra limiar fixo
 - **Janela de treino maior** — treinar sobre dias de histórico, não uma hora, para
-  o modelo capturar sazonalidade em vez de só tendência
-- **Mais ações de remediação** — hoje só `rollout restart`; adicionar limpeza de
-  disco e escalonamento de réplicas como ações possíveis
+  o modelo capturar sazonalidade (horário e dia da semana) em vez de só tendência
 - **Streaming (Kafka)** — desacoplar API→banco via eventos (mesmo padrão do
   `pedidos-app`); e/ou métricas em tempo real via Kafka Streams/ksqlDB no lugar
   do scrape pull-based do Prometheus
