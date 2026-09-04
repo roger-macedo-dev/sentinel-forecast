@@ -450,8 +450,5 @@ Também roda inteira localmente via Docker Compose.
   separação Global / Região Restrita já descrita em `docs/DESIGN.md`
 - **Janela de treino maior** — treinar sobre dias de histórico, não uma hora, para
   o modelo capturar sazonalidade (horário e dia da semana) em vez de só tendência
-- **Streaming (Kafka)** — desacoplar API→banco via eventos (mesmo padrão do
-  `pedidos-app`); e/ou métricas em tempo real via Kafka Streams/ksqlDB no lugar
-  do scrape pull-based do Prometheus
 - **Infraestrutura como código** — provisionar o cluster via Terraform, em vez
   de `gcloud` imperativo
