@@ -22,6 +22,13 @@ PROMETHEUS_URL = os.environ.get("PROMETHEUS_URL", "http://prometheus:9090")
 CONFIG_PATH = os.environ.get("PREVISOES_CONFIG", "/config/previsoes.yml")
 INTERVALO_SEGUNDOS = int(os.environ.get("INTERVALO_SEGUNDOS", "300"))
 HORIZONTE_HORAS = int(os.environ.get("HORIZONTE_HORAS", "1"))
+# Janela de historico usada para treinar. Uma hora so permite ao modelo
+# capturar tendencia; com dias, ele passa a reconhecer sazonalidade diaria
+# (madrugada vs horario comercial) e a anomalia deixa de ser "fora da media
+# recente" e vira "fora do padrao daquele horario".
+JANELA_SEGUNDOS = int(os.environ.get("JANELA_SEGUNDOS", "3600"))
+# Limite pratico do query_range do Prometheus; manter folga.
+MAXIMO_PONTOS = int(os.environ.get("MAXIMO_PONTOS", "3000"))
 
 # Uma unica metrica com rotulo 'alvo', em vez de uma metrica por recurso:
 # permite agregar e escrever uma regra de alerta que cobre todos os alvos.
@@ -67,9 +74,14 @@ def carregar_config():
         return yaml.safe_load(f)["previsoes"]
 
 
-def buscar_historico(query, janela_segundos=3600, passo="30s"):
+def buscar_historico(query, janela_segundos=None):
     """Busca a serie historica no Prometheus e devolve no formato que o Prophet
     espera: colunas 'ds' (timestamp) e 'y' (valor)."""
+    janela_segundos = janela_segundos or JANELA_SEGUNDOS
+
+    # O passo acompanha a janela: passo fixo de 30s numa janela de dias
+    # ultrapassaria o teto de pontos do query_range e a consulta falharia.
+    passo = max(30, int(janela_segundos / MAXIMO_PONTOS))
     agora = time.time()
     resp = requests.get(
         f"{PROMETHEUS_URL}/api/v1/query_range",
@@ -77,7 +89,7 @@ def buscar_historico(query, janela_segundos=3600, passo="30s"):
             "query": query,
             "start": agora - janela_segundos,
             "end": agora,
-            "step": passo,
+            "step": f"{passo}s",
         },
         timeout=30,
     )
@@ -103,7 +115,7 @@ MINIMO_PONTOS = int(os.environ.get("MINIMO_PONTOS", "20"))
 def prever(alvo):
     """Treina um modelo com o historico recente e devolve o valor previsto para
     o fim do horizonte configurado."""
-    df = buscar_historico(alvo["query"])
+    df = buscar_historico(alvo["query"], alvo.get("janela_segundos"))
     if df is None or len(df) < MINIMO_PONTOS:
         # Historico curto gera tendencia instavel: uma queda momentanea vira
         # extrapolacao absurda. Comum logo apos subir o ambiente.
@@ -139,11 +151,13 @@ def prever(alvo):
     # um pouco dos limites mesmo com crescimento logistico.
     previsto = min(max(previsto, 0.0), teto)
 
-    # A ultima linha e a projecao futura; a penultima corresponde ao instante
-    # mais recente ja observado. Comparar o valor real com o intervalo previsto
+    # Indexa pelo tamanho do historico, nao por posicao relativa ao fim: o
+    # dataframe de previsao tem len(df) linhas historicas seguidas de
+    # HORIZONTE_HORAS linhas futuras. Usar iloc[-2] so funcionaria com horizonte
+    # de exatamente 1 hora. Comparar o valor real com o intervalo previsto
     # para esse instante e o que caracteriza anomalia: nao um limiar fixo, e sim
     # desvio em relacao ao que o modelo esperava dado o padrao historico.
-    esperado_agora = resultado.iloc[-2]
+    esperado_agora = resultado.iloc[len(df) - 1]
     multiplicador = alvo.get("multiplicador", 1)
 
     # Margem absoluta minima, proporcional ao teto da metrica. Sem ela, uma serie
