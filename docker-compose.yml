@@ -69,7 +69,7 @@ services:
     build: ./remediador
     environment:
       - DRY_RUN=true
-      - ALLOWLIST=sidecar,api
+      - ALLOWLIST=sidecar:reiniciar|limpar_pods_falhos,api:reiniciar|escalar
       - COOLDOWN_SEGUNDOS=600
     ports:
       - "8080:8080"

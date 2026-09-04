@@ -20,7 +20,7 @@ spec:
             - name: DRY_RUN
               value: "false"
             - name: ALLOWLIST
-              value: "sidecar,api"
+              value: "sidecar:reiniciar|limpar_pods_falhos,api:reiniciar|escalar"
             - name: COOLDOWN_SEGUNDOS
               value: "600"
             - name: NAMESPACE

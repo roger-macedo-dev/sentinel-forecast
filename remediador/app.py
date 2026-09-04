@@ -15,13 +15,27 @@ app = Flask(__name__)
 # DRY_RUN=false -> executa de verdade contra a API do Kubernetes
 DRY_RUN = os.environ.get("DRY_RUN", "true").lower() == "true"
 
-# Allowlist: unicos alvos que o remediador tem permissao de tocar.
-# Alvo fora dela e recusado, mesmo que o alerta peca.
-ALLOWLIST = {
-    alvo.strip()
-    for alvo in os.environ.get("ALLOWLIST", "sidecar,api").split(",")
-    if alvo.strip()
-}
+# Allowlist por alvo E por acao: "sidecar:reiniciar|limpar_pods_falhos,api:reiniciar".
+# Sem ":" o alvo aceita qualquer acao. Controlar apenas o alvo nao basta —
+# escalar o sidecar, por exemplo, "funciona", mas duplica o treino dos modelos e
+# faz duas replicas publicarem previsoes divergentes para a mesma metrica.
+def _carregar_allowlist(bruto):
+    permitido = {}
+    for entrada in bruto.split(","):
+        entrada = entrada.strip()
+        if not entrada:
+            continue
+        if ":" in entrada:
+            alvo, acoes = entrada.split(":", 1)
+            permitido[alvo.strip()] = {a.strip() for a in acoes.split("|") if a.strip()}
+        else:
+            permitido[entrada] = None  # None = todas as acoes
+    return permitido
+
+
+ALLOWLIST = _carregar_allowlist(
+    os.environ.get("ALLOWLIST", "sidecar:reiniciar|limpar_pods_falhos,api:reiniciar|escalar")
+)
 
 # Cooldown: tempo minimo entre duas remediacoes do mesmo alvo.
 # Sem isso, um alerta que persiste apos a acao viraria loop.
@@ -163,6 +177,15 @@ def processar(alerta):
         log.warning("Alvo '%s' recusado: fora da allowlist %s", alvo, sorted(ALLOWLIST))
         return f"recusado: '{alvo}' fora da allowlist"
 
+    acoes_permitidas = ALLOWLIST[alvo]
+    if acoes_permitidas is not None and acao not in acoes_permitidas:
+        bloqueios.labels(motivo="acao_nao_permitida_no_alvo").inc()
+        log.warning(
+            "Acao '%s' nao permitida em '%s' (permitidas: %s)",
+            acao, alvo, sorted(acoes_permitidas),
+        )
+        return f"recusado: acao '{acao}' nao permitida em '{alvo}'"
+
     if acao not in ACOES_VALIDAS:
         bloqueios.labels(motivo="acao_desconhecida").inc()
         log.warning("Acao '%s' desconhecida", acao)
@@ -217,7 +240,7 @@ def health():
     return {
         "status": "ok",
         "dry_run": DRY_RUN,
-        "allowlist": sorted(ALLOWLIST),
+        "allowlist": {a: (sorted(v) if v else "todas") for a, v in ALLOWLIST.items()},
         "cooldown_segundos": COOLDOWN_SEGUNDOS,
         "max_replicas": MAX_REPLICAS,
         "acoes": sorted(ACOES_VALIDAS),
@@ -227,6 +250,6 @@ def health():
 if __name__ == "__main__":
     log.info(
         "Remediador iniciado | dry_run=%s allowlist=%s cooldown=%ss acoes=%s",
-        DRY_RUN, sorted(ALLOWLIST), COOLDOWN_SEGUNDOS, sorted(ACOES_VALIDAS),
+        DRY_RUN, ALLOWLIST, COOLDOWN_SEGUNDOS, sorted(ACOES_VALIDAS),
     )
     app.run(host="0.0.0.0", port=8080)
